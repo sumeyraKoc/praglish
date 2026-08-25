@@ -1,0 +1,15 @@
+{
+  "scenario_id": "cafe",
+  "name": "Ordering Coffee",
+  "npc_role": "barista",
+  "initial_state": {
+    "drink": null,
+    "size": null,
+    "milk": null
+  },
+  "required_fields": ["drink", "size", "milk"],
+  "rewards": {
+    "completion_xp_bonus": 50,
+    "completion_coin_bonus": 20
+  }
+}

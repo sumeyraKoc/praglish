@@ -1,0 +1,14 @@
+{
+  "scenario_id": "school",
+  "name": "Talking to the Teacher",
+  "npc_role": "teacher",
+  "initial_state": {
+    "topic": null,
+    "understood": null
+  },
+  "required_fields": ["topic", "understood"],
+  "rewards": {
+    "completion_xp_bonus": 40,
+    "completion_coin_bonus": 15
+  }
+}

@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: english_world
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  ai:
+    build:
+      context: .
+      dockerfile: ai/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      - LANGUAGE_ACCEPTANCE_THRESHOLD=${LANGUAGE_ACCEPTANCE_THRESHOLD:-50}
+    volumes:
+      - whisper_cache:/root/.cache
+      - ./ai:/app          # canli kod guncelleme - --reload bunu izler
+      - ./shared:/app/shared
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/english_world
+      - AI_SERVICE_URL=http://ai:8001
+      - USE_MOCK_AI=true
+    depends_on:
+      - db
+      - ai
+    volumes:
+      - ./api:/app          # canli kod guncelleme - --reload bunu izler
+      - ./shared:/app/shared
+
+volumes:
+  pgdata:
+  whisper_cache:

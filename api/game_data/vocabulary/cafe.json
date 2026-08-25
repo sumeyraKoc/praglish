@@ -1,0 +1,32 @@
+{
+  "location": "cafe",
+  "concepts": [
+    {
+      "concept": "chair",
+      "words": [
+        {"word": "chair", "reward_coins": 10},
+        {"word": "seat", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "cup",
+      "words": [
+        {"word": "cup", "reward_coins": 10},
+        {"word": "mug", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "coffee_machine",
+      "words": [
+        {"word": "coffee machine", "reward_coins": 10},
+        {"word": "espresso machine", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "spoon",
+      "words": [
+        {"word": "spoon", "reward_coins": 10}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "scenario_id": "hospital",
+  "name": "Doctor Visit",
+  "npc_role": "doctor",
+  "initial_state": {
+    "symptom": null,
+    "duration": null,
+    "severity": null
+  },
+  "required_fields": ["symptom", "duration", "severity"],
+  "rewards": {
+    "completion_xp_bonus": 60,
+    "completion_coin_bonus": 25
+  }
+}

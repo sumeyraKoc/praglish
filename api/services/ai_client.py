@@ -2,7 +2,12 @@ import os
 
 import httpx
 
-from shared.schemas import EvaluateRequest, EvaluateResponse
+from shared.schemas import (
+    EvaluateRequest,
+    EvaluateResponse,
+    ExtractionRequest,
+    ExtractionResult,
+)
 
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://ai:8001")
 USE_MOCK_AI = os.getenv("USE_MOCK_AI", "true").lower() == "true"
@@ -30,3 +35,18 @@ async def evaluate_and_respond(payload: EvaluateRequest) -> EvaluateResponse:
         )
         response.raise_for_status()
         return EvaluateResponse(**response.json())
+
+
+async def extract_utterance(payload: ExtractionRequest) -> ExtractionResult | None:
+    """Return None in mock mode so fake evaluations do not pollute analytics."""
+
+    if USE_MOCK_AI:
+        return None
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(
+            f"{AI_SERVICE_URL}/extract",
+            json=payload.model_dump(),
+        )
+        response.raise_for_status()
+        return ExtractionResult(**response.json())

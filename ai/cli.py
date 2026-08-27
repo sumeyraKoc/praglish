@@ -1,16 +1,26 @@
 import os
+from collections import Counter
 
 from dotenv import load_dotenv
 
 from ai.modules import (
     CorrectionModule,
+    CorrectExtractor,
+    GeminiExtractionProvider,
     GeminiPlausibilityEstimator,
     GeminiTextGenerator,
     LanguageEvaluator,
+    IncorrectExtractor,
     NpcModule,
     TextSpeechModule,
 )
-from shared.schemas import LanguageEvaluationInput, NPCIdentity, NPCTask
+from shared.schemas import (
+    ExtractionRequest,
+    ExtractionResult,
+    LanguageEvaluationInput,
+    NPCIdentity,
+    NPCTask,
+)
 
 
 def create_barista() -> NPCIdentity:
@@ -30,6 +40,27 @@ def create_barista() -> NPCIdentity:
     )
 
 
+def print_extraction(result: ExtractionResult) -> None:
+    grammar = ", ".join(
+        f"{item.topic_name}×{item.count}" for item in result.grammar
+    ) or "none"
+    vocabulary_levels = Counter()
+    for item in result.vocabulary:
+        vocabulary_levels[item.cefr_level] += item.count
+    vocabulary = ", ".join(
+        f"{level}×{vocabulary_levels[level]}"
+        for level in ("A1", "A2", "B1", "B2", "C1", "C2")
+        if vocabulary_levels[level]
+    ) or "none"
+    idioms = ", ".join(
+        f"{item.normalized_idiom}×{item.count}" for item in result.idioms
+    ) or "none"
+    print(
+        f"Extractor ({result.outcome}): grammar=[{grammar}] "
+        f"vocabulary=[{vocabulary}] idioms=[{idioms}]"
+    )
+
+
 def run() -> None:
     load_dotenv()
 
@@ -39,8 +70,11 @@ def run() -> None:
     model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
     evaluator = LanguageEvaluator(
         estimator=GeminiPlausibilityEstimator(api_key=api_key, model=model),
-        threshold=float(os.getenv("LANGUAGE_ACCEPTANCE_THRESHOLD", "50")),
+        threshold=float(os.getenv("LANGUAGE_ACCEPTANCE_THRESHOLD", "90")),
     )
+    extraction_provider = GeminiExtractionProvider(api_key=api_key, model=model)
+    correct_extractor = CorrectExtractor(extraction_provider)
+    incorrect_extractor = IncorrectExtractor(extraction_provider)
     generator = GeminiTextGenerator(
         api_key=api_key,
         model=model,
@@ -73,6 +107,19 @@ def run() -> None:
             f"| threshold = {evaluation.threshold:.1f}% "
             f"| accepted = {evaluation.accepted}"
         )
+
+        extraction_request = ExtractionRequest(
+            utterance=transcript,
+            outcome="correct" if evaluation.accepted else "incorrect",
+            context=f"{npc.identity.location} role-play",
+            speaker=npc.identity.user_role,
+            listener=npc.identity.role,
+            communicative_goals=[task.description for task in npc.identity.tasks],
+            dialogue_history=npc.dialogue_history,
+            evaluation_reason=evaluation.brief_reason,
+        )
+        extractor = correct_extractor if evaluation.accepted else incorrect_extractor
+        print_extraction(extractor.extract(extraction_request))
 
         if not evaluation.accepted:
             feedback = correction.create_feedback(transcript)

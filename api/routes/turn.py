@@ -1,15 +1,25 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.database import get_db
 from models.models import Dialogue, GameSession, User
-from services.ai_client import evaluate_and_respond
+from services.ai_client import evaluate_and_respond, extract_utterance
+from services.learning_analytics import LearningAnalyticsService
 from services.reward_engine import RewardEngine
 from services.scenario_engine import ScenarioEngine
-from shared.schemas import DialogueTurn, EvaluateRequest, EvaluateResponse, RewardInfo
+from shared.schemas import (
+    DialogueTurn,
+    EvaluateRequest,
+    EvaluateResponse,
+    ExtractionRequest,
+    RewardInfo,
+)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class TurnRequest(BaseModel):
@@ -53,6 +63,43 @@ async def process_turn(session_id: int, request: TurnRequest, db: Session = Depe
 
     user_dialogue.is_natural = result.accepted
     user_dialogue.correction = result.correction
+
+    # CorrectExtractor yalnizca kabul edilen kullanimlari, IncorrectExtractor
+    # yalnizca reddedilen cumledeki somut hatalari sayar. Extractor analytics
+    # oldugu icin gecici bir AI/DB hatasi oyun turunu bloke etmez.
+    accepted_history = [
+        DialogueTurn(speaker=d.speaker, text=d.text)
+        for d in dialogues
+        if d.id != user_dialogue.id and (d.speaker == "npc" or d.is_natural is True)
+    ]
+    scenario_data = ScenarioEngine.load_scenario(session.location)
+    extraction_payload = ExtractionRequest(
+        utterance=request.user_text,
+        outcome="correct" if result.accepted else "incorrect",
+        context=f"{session.location} role-play",
+        speaker="player",
+        listener=session.npc_role,
+        communicative_goals=[
+            f"Complete scenario field: {field}"
+            for field in scenario_data.get("required_fields", [])
+        ],
+        dialogue_history=accepted_history,
+        evaluation_reason=result.evaluation_reason or result.correction,
+    )
+    try:
+        extraction_result = await extract_utterance(extraction_payload)
+        if extraction_result is not None:
+            with db.begin_nested():
+                LearningAnalyticsService.record_extraction(
+                    db,
+                    user_id=session.user_id,
+                    session_id=session.id,
+                    dialogue_id=user_dialogue.id,
+                    utterance=request.user_text,
+                    result=extraction_result,
+                )
+    except Exception:  # analytics must fail open during gameplay
+        logger.exception("Language extraction failed for dialogue %s", user_dialogue.id)
 
     # Odul motoru - result Pydantic nesnesi, .get() degil dogrudan attribute erisimi
     reward_info = RewardEngine.process_turn_reward(

@@ -31,7 +31,19 @@ python -m ai.cli
 NPC yalnizca Language Evaluator tarafindan kabul edilen kullanici cumlelerini
 ve kendi cevaplarini konusma gecmisinde tutar.
 
-Varsayilan kabul esigi `%50`'dir. `.env` icinden degistirilebilir:
+Her cumle evaluator kararindan sonra iki extractor'dan birine gider:
+
+- `CorrectExtractor`: dogru kullanilan gramer konularini, isim/sifat CEFR
+  seviyelerini ve idiomlari cikarir.
+- `IncorrectExtractor`: yalnizca somut hata bulunan gramer, vocabulary ve idiom
+  kategorilerini cikarir.
+
+AI servisindeki `POST /extract` endpoint'i yapilandirilmis sonucu dondurur. API
+servisi bu sonucu PostgreSQL'deki ham event tablosuna ve ayri
+`correct`/`incorrect` sayaclarina atomik olarak kaydeder. Ayni `dialogue_id`
+tekrar islenirse sayaclar ikinci kez artmaz.
+
+Kabul esigi `.env` icinden degistirilebilir; ornek deger:
 
 ```env
 LANGUAGE_ACCEPTANCE_THRESHOLD=50
@@ -67,6 +79,13 @@ Postman/curl ile bağımsız test edebilir.
 | `GET /api/leaderboard/` | XP'ye göre ilk 10 kullanıcı |
 | `POST /api/vocabulary/submit` | `{user_id, location, concept, word}` — kelime/eş anlamlı eşleşirse ve daha önce kazanılmadıysa coin verir |
 | `GET /api/vocabulary/progress/{user_id}/{location}` | Kullanıcının o odadaki kelime ilerlemesi |
+
+## Learning analytics tablolari
+
+- `learning_extraction_events` — cumle bazli ham extractor sonucu
+- `grammar_usage_stats` — kullanici + correct/incorrect + 1–50 konu sayaci
+- `vocabulary_level_stats` — kullanici + correct/incorrect + A1–C2 sayaci
+- `idiom_usage_stats` — normalize idiom basina ilk/son kullanim ve tekrar sayaci
 
 ## Statik oyun verisi (`api/game_data/`)
 

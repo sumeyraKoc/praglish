@@ -1,7 +1,9 @@
 import os
 from functools import lru_cache
 
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 from dotenv import load_dotenv
 
 from modules import (
@@ -9,6 +11,8 @@ from modules import (
     CorrectExtractor,
     GeminiExtractionProvider,
     GeminiPlausibilityEstimator,
+    GeminiSpeechToTextProvider,
+    GeminiTextToSpeechProvider,
     GeminiTextGenerator,
     IncorrectExtractor,
     LanguageEvaluator,
@@ -25,7 +29,6 @@ from shared.schemas import (
     NPCTask,
     STTResponse,
     TTSRequest,
-    TTSResponse,
 )
 
 load_dotenv()
@@ -62,6 +65,22 @@ def get_npc_generator() -> GeminiTextGenerator:
     return GeminiTextGenerator(
         api_key=os.getenv("GEMINI_API_KEY", ""),
         model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+    )
+
+
+@lru_cache
+def get_stt_provider() -> GeminiSpeechToTextProvider:
+    return GeminiSpeechToTextProvider(
+        api_key=os.getenv("GEMINI_API_KEY", ""),
+        model=os.getenv("STT_MODEL", "gemini-3.5-transcribe"),
+    )
+
+
+@lru_cache
+def get_tts_provider() -> GeminiTextToSpeechProvider:
+    return GeminiTextToSpeechProvider(
+        api_key=os.getenv("GEMINI_API_KEY", ""),
+        model=os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview"),
     )
 
 
@@ -137,23 +156,69 @@ def evaluate_and_respond(payload: EvaluateRequest):
 
 
 @app.post("/stt", response_model=STTResponse)
-async def speech_to_text(audio: UploadFile):
-    """
-    TODO(Sumeyra):
-    - faster-whisper (self-hosted, ucretsiz, sinirsiz) veya Groq Whisper entegrasyonu
-    - ONEMLI: STT'nin bozuk gramerli cumleleri sessizce "duzeltip duzeltmedigini"
-      erken test et - evaluator'in dogrulugu buna bagli
-    """
-    _ = await audio.read()
-    return STTResponse(text="placeholder transcript")
+async def speech_to_text(
+    audio: UploadFile,
+    language_code: str | None = "en-US",
+    custom_vocabulary: str | None = None,
+):
+    audio_bytes = await audio.read()
+    max_bytes = int(os.getenv("STT_MAX_AUDIO_BYTES", str(10 * 1024 * 1024)))
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Audio file is empty")
+    if len(audio_bytes) > max_bytes:
+        raise HTTPException(status_code=413, detail="Audio file is too large")
+
+    vocabulary = (
+        [term.strip() for term in custom_vocabulary.split(",") if term.strip()]
+        if custom_vocabulary
+        else []
+    )
+    try:
+        result = await run_in_threadpool(
+            get_stt_provider().transcribe,
+            audio_bytes,
+            mime_type=audio.content_type or "application/octet-stream",
+            language_codes=[language_code] if language_code else [],
+            custom_vocabulary=vocabulary,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Speech transcription failed") from exc
+
+    return STTResponse(
+        text=result.text,
+        language_code=result.language_code,
+        mode="verbatim",
+        model=result.model,
+        latency_ms=result.latency_ms,
+    )
 
 
-@app.post("/tts", response_model=TTSResponse)
+@app.post(
+    "/tts",
+    response_class=Response,
+    responses={200: {"content": {"audio/wav": {}}}},
+)
 def text_to_speech(payload: TTSRequest):
-    """
-    TODO(Sumeyra):
-    - Demo icin: Web Speech API (client tarafinda, backend'e hic ugramadan) da secenek
-    - Ticari/kalici cozum icin: Piper TTS (self-hosted, $0, resmi risk yok)
-    - edge-tts KULLANMA: resmi olmayan, dokumante olmayan bir kutuphane, her an bozulabilir
-    """
-    return TTSResponse(audio_url="placeholder.mp3")
+    try:
+        result = get_tts_provider().synthesize(
+            payload.text,
+            voice=payload.voice,
+            style=payload.style,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Speech synthesis failed") from exc
+
+    return Response(
+        content=result.audio,
+        media_type=result.mime_type,
+        headers={
+            "Content-Disposition": 'inline; filename="speech.wav"',
+            "X-Speech-Model": result.model,
+            "X-Speech-Voice": result.voice,
+            "X-Speech-Latency-Ms": str(result.latency_ms),
+        },
+    )

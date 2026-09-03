@@ -1,0 +1,14 @@
+{
+  "scenario_id": "library",
+  "name": "Finding and Borrowing a Book",
+  "npc_role": "librarian",
+  "initial_state": {
+    "book_topic": null,
+    "borrowing_intent": null
+  },
+  "required_fields": ["book_topic", "borrowing_intent"],
+  "rewards": {
+    "completion_xp_bonus": 50,
+    "completion_coin_bonus": 20
+  }
+}

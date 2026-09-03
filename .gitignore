@@ -6,3 +6,6 @@ __pycache__/
 .venv/
 venv/
 *.wav
+node_modules/
+dist/
+.pnpm-store/

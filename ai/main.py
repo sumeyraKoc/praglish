@@ -35,6 +35,17 @@ load_dotenv()
 
 app = FastAPI(title="English World - AI Service")
 
+NPC_PROFILES = {
+    ("bakery", "baker"): {
+        "name": "Maya",
+        "personality": "Warm, cheerful, patient, and concise",
+    },
+    ("library", "librarian"): {
+        "name": "Lina",
+        "personality": "Warm, knowledgeable, patient, and concise",
+    },
+}
+
 
 @app.get("/health")
 def health():
@@ -129,13 +140,20 @@ def evaluate_and_respond(payload: EvaluateRequest):
             evaluation_reason=evaluation.brief_reason,
         )
 
+    profile = NPC_PROFILES.get(
+        (payload.location, payload.npc_role),
+        {
+            "name": payload.npc_role.replace("_", " ").title(),
+            "personality": "Friendly, patient, and concise",
+        },
+    )
     identity = NPCIdentity(
         id=f"{payload.location}_{payload.npc_role}",
-        name=payload.npc_role.replace("_", " ").title(),
+        name=profile["name"],
         role=payload.npc_role,
         user_role="player",
         location=payload.location,
-        personality="Friendly, patient, and concise",
+        personality=profile["personality"],
         tasks=[
             NPCTask(id=f"task_{index}", description=goal)
             for index, goal in enumerate(goals, start=1)

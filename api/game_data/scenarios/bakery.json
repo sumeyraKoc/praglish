@@ -1,0 +1,14 @@
+{
+  "scenario_id": "bakery",
+  "name": "Buying Something at a Bakery",
+  "npc_role": "baker",
+  "initial_state": {
+    "item": null,
+    "quantity": null
+  },
+  "required_fields": ["item", "quantity"],
+  "rewards": {
+    "completion_xp_bonus": 50,
+    "completion_coin_bonus": 20
+  }
+}

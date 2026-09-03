@@ -1,5 +1,21 @@
 # English World - Backend
 
+## Oyun istemcisi
+
+Çalışan Phaser MVP'si `game/` klasöründedir. İzometrik fırın ve kütüphane
+haritalarını render eder; tıkla-yürü, A* pathfinding, mobilya çarpışmaları ve
+AI destekli Maya ile Lina NPC'lerini içerir.
+
+```bash
+cd game
+npm install
+npm run dev
+```
+
+Oyun: http://localhost:5173
+
+Ayrıntılar için `game/README.md` dosyasına bakın.
+
 ## Mimari
 - **api/** (Zehra) — FastAPI, session/scenario/vocabulary/ödül mantığı, DB. Hafif bağımlılıklar.
 - **ai/** (Sümeyra) — STT, TTS, Language Evaluator, NPC Engine. Ağır ML bağımlılıkları.
@@ -12,6 +28,41 @@
 cp .env.example .env   # GEMINI_API_KEY'i doldurun
 docker compose up --build
 ```
+
+### Windows'ta tam sistemi çalıştırma
+
+Yeni bir PowerShell penceresinde repoyu klonlayıp proje klasörüne girin:
+
+```powershell
+git clone https://github.com/sumeyraKoc/praglish.git
+cd praglish
+Copy-Item .env.example .env
+# .env içindeki GEMINI_API_KEY değerini kendi anahtarınızla değiştirin.
+docker compose up --build -d
+docker compose ps
+```
+
+`db` satırı `healthy`; `api`, `ai` ve `game` satırları `Up`
+görünmelidir. Tüm servislerin loglarını izlemek için:
+
+```powershell
+docker compose logs -f game api ai db
+```
+
+Oyun da Compose tarafından Node.js 24 container'ında başlatılır; bilgisayara
+ayrıca Node.js veya npm kurmak gerekmez. `http://localhost:5173` adresini açın.
+Maya ve Lina konuşma istemcileri varsayılan olarak `http://localhost:8000`
+adresindeki gerçek API'yi kullanır. Gemini anahtarı olmadan yalnızca akışı
+denemek için `.env` dosyasına `USE_MOCK_AI=true` eklenebilir.
+
+Yalnızca container'ları durdurmak için:
+
+```powershell
+docker compose down
+```
+
+PostgreSQL verisini de silerek tamamen sıfırlamak için ancak bilinçli olarak
+`docker compose down -v` kullanın.
 
 - api → http://localhost:8000/docs
 - ai  → http://localhost:8001/docs
@@ -86,9 +137,9 @@ tabloları oluşturur.
 ## Paralel çalışma modeli
 
 `api/services/ai_client.py` içinde `USE_MOCK_AI` ortam değişkeni var:
-- `true` (varsayılan): Zehra, Sümeyra'nın ai servisini beklemeden sabit/sahte bir
+- `true`: API anahtarı olmadan sabit/sahte bir
   cevapla session/DB akışını geliştirebilir.
-- `false`: gerçek `ai` container'ına HTTP isteği atar.
+- `false` (varsayılan): gerçek `ai` container'ına HTTP isteği atar.
 
 Sümeyra `ai` servisini `docker compose up ai` ile tek başına ayağa kaldırıp,
 `api`'yi hiç beklemeden `POST http://localhost:8001/evaluate-and-respond`'u
@@ -114,7 +165,7 @@ Postman/curl ile bağımsız test edebilir.
 
 ## Statik oyun verisi (`api/game_data/`)
 
-- `scenarios/{cafe,hospital,school}.json` — her odanın `required_fields`'ı, başlangıç
+- `scenarios/{bakery,library,cafe,hospital,school}.json` — her odanın `required_fields`'ı, başlangıç
   state'i ve tamamlama ödülü. Yeni oda eklemek için kod değiştirmeye gerek yok, sadece
   yeni bir JSON dosyası ekleyin.
 - `vocabulary/cafe.json` — şu an sadece cafe için var. `hospital.json`/`school.json`
@@ -123,28 +174,24 @@ Postman/curl ile bağımsız test edebilir.
 ## Tamamlanan / kalan işler
 
 **Bitti, test edildi:**
-- Docker/Compose (iki servisli mimari: api + ai + db)
+- Docker/Compose (game + api + ai + db)
 - DB modelleri (User, GameSession, Dialogue, VocabularyProgress)
 - Gemini push-to-talk STT (`verbatim`) ve WAV TTS endpoint'leri
 - Auth (basit username+şifre, hackathon MVP seviyesinde)
 - Session başlatma + turn akışı (kaydet → değerlendir → ödüllendir → senaryo kontrolü)
 - Ödül motoru, leaderboard, vocabulary sistemi
+- Phaser oyun istemcisi, fırın/kütüphane haritaları, hareket ve çarpışma
+- Maya ve Lina konuşma panellerinin session/turn akışına bağlanması
 
 **Sümeyra'da, bekleniyor:**
 - Oyun istemcisindeki mikrofon push-to-talk kontrolunun `/stt` endpoint'ine baglanmasi
 - NPC/correction metninin `/tts` endpoint'inden oynatilmasi
 - Streaming STT/TTS ve oyuncunun NPC konusurken araya girebilmesi
 
-**Hiç başlanmadı:**
-- Oyun client'ı (Phaser, ikisi birlikte)
-- Client ↔ backend entegrasyonu
-
 ## Sıradaki adımlar
 
-- [ ] Modüler AI akışı `ai` servisine bağlanınca `USE_MOCK_AI=false` yapıp
-      uçtan uca (gerçek AI ile) tekrar test edin
-- [ ] Phaser client'ına başlama zamanı geldiğinde `docs/architecture-diagram` (sohbet
-      geçmişindeki docker-compose diyagramı) referans alınabilir
+- [ ] Aktif session'ı ve konuşma geçmişini oyun yeniden açıldığında geri yükleyin
+- [ ] Misafir konuşmaları için veri saklama/temizleme politikası ekleyin
 - [ ] Hackathon'un resmi başlangıcında (21 Ağustos) gerçek submission reposunu
       sıfırdan açıp bu kodu oraya taşıyın — kurallar "submission hackathon
       döneminde oluşturulmalı" diyor

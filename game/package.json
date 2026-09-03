@@ -1,0 +1,24 @@
+{
+  "name": "praglish-game",
+  "version": "1.0.0",
+  "description": "Praglish isometric bakery MVP",
+  "main": "index.js",
+  "scripts": {
+    "test": "tsc && node dist/engine/__tests__/manual-test.js",
+    "dev": "vite",
+    "dev:mock-api": "node scripts/mock-api.mjs",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^26.4.0",
+    "phaser": "^3.87.0",
+    "typescript": "^7.0.2"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2"
+  }
+}

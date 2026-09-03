@@ -1,10 +1,10 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from core.database import get_db
+from core.database import SessionLocal, get_db
 from models.models import Dialogue, GameSession, User
 from services.ai_client import evaluate_and_respond, extract_utterance
 from services.learning_analytics import LearningAnalyticsService
@@ -22,12 +22,48 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+async def _record_extraction_background(
+    payload: ExtractionRequest,
+    *,
+    user_id: int,
+    session_id: int,
+    dialogue_id: int,
+    utterance: str,
+) -> None:
+    """Run optional learning analytics without delaying the gameplay response."""
+
+    db = SessionLocal()
+    try:
+        extraction_result = await extract_utterance(payload)
+        if extraction_result is None:
+            return
+        LearningAnalyticsService.record_extraction(
+            db,
+            user_id=user_id,
+            session_id=session_id,
+            dialogue_id=dialogue_id,
+            utterance=utterance,
+            result=extraction_result,
+        )
+        db.commit()
+    except Exception:  # analytics must fail open during gameplay
+        db.rollback()
+        logger.exception("Language extraction failed for dialogue %s", dialogue_id)
+    finally:
+        db.close()
+
+
 class TurnRequest(BaseModel):
     user_text: str
 
 
 @router.post("/{session_id}/turn", response_model=EvaluateResponse)
-async def process_turn(session_id: int, request: TurnRequest, db: Session = Depends(get_db)):
+async def process_turn(
+    session_id: int,
+    request: TurnRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     session = db.query(GameSession).filter(GameSession.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -86,21 +122,6 @@ async def process_turn(session_id: int, request: TurnRequest, db: Session = Depe
         dialogue_history=accepted_history,
         evaluation_reason=result.evaluation_reason or result.correction,
     )
-    try:
-        extraction_result = await extract_utterance(extraction_payload)
-        if extraction_result is not None:
-            with db.begin_nested():
-                LearningAnalyticsService.record_extraction(
-                    db,
-                    user_id=session.user_id,
-                    session_id=session.id,
-                    dialogue_id=user_dialogue.id,
-                    utterance=request.user_text,
-                    result=extraction_result,
-                )
-    except Exception:  # analytics must fail open during gameplay
-        logger.exception("Language extraction failed for dialogue %s", user_dialogue.id)
-
     # Odul motoru - result Pydantic nesnesi, .get() degil dogrudan attribute erisimi
     reward_info = RewardEngine.process_turn_reward(
         db=db, user_id=session.user_id, is_accepted=result.accepted
@@ -142,5 +163,14 @@ async def process_turn(session_id: int, request: TurnRequest, db: Session = Depe
             )
 
     db.commit()
+
+    background_tasks.add_task(
+        _record_extraction_background,
+        extraction_payload,
+        user_id=session.user_id,
+        session_id=session.id,
+        dialogue_id=user_dialogue.id,
+        utterance=request.user_text,
+    )
 
     return result

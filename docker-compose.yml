@@ -26,12 +26,17 @@ services:
       # bkz. ai/main.py > _active_ai_provider() ve README "AI saglayicisi".
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      # Bos birakilirsa ai/main.py GEMINI_MODEL'e duser (bkz. .env.example).
+      - GEMINI_EVALUATOR_MODEL=${GEMINI_EVALUATOR_MODEL:-}
       - CORRECTION_MODEL=${CORRECTION_MODEL:-gemini-3.5-flash-lite}
       - STT_MODEL=${STT_MODEL:-gemini-3.5-transcribe}
       - TTS_MODEL=${TTS_MODEL:-gemini-3.1-flash-tts-preview}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
-      - GROQ_CORRECTION_MODEL=${GROQ_CORRECTION_MODEL:-llama-3.3-70b-versatile}
+      # Evaluator/correction icin varsayilan olarak Groq'un hizli "instant"
+      # modeli - bkz. .env.example ve README "Yanit suresi" bolumu.
+      - GROQ_EVALUATOR_MODEL=${GROQ_EVALUATOR_MODEL:-llama-3.1-8b-instant}
+      - GROQ_CORRECTION_MODEL=${GROQ_CORRECTION_MODEL:-llama-3.1-8b-instant}
       - GROQ_STT_MODEL=${GROQ_STT_MODEL:-whisper-large-v3-turbo}
       - GROQ_TTS_MODEL=${GROQ_TTS_MODEL:-canopylabs/orpheus-v1-english}
       - LANGUAGE_ACCEPTANCE_THRESHOLD=${LANGUAGE_ACCEPTANCE_THRESHOLD:-50}
@@ -52,6 +57,9 @@ services:
       - AI_SERVICE_URL=http://ai:8001
       - USE_MOCK_AI=${USE_MOCK_AI:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      # Bir turda evaluator/NPC/correction'a gonderilen gecmis bu kadar satirla
+      # sinirlanir - bkz. api/services/dialogue_history.py ve .env.example.
+      - MAX_DIALOGUE_HISTORY_TURNS=${MAX_DIALOGUE_HISTORY_TURNS:-12}
     depends_on:
       db:
         condition: service_healthy

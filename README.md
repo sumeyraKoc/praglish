@@ -297,6 +297,77 @@ Kısacası: tarayıcı konsolunda CORS hatası görüp `curl`/DevTools'ta CORS
 header'larının doğru geldiğini de görüyorsanız, sorun büyük ihtimalle CORS
 değil — `docker compose logs -f api` ile asıl 500/exception'ı arayın.
 
+## Konuşma hafızası: her oda ziyareti sıfırdan başlar
+
+Ekip kararı (bkz. Zehra/Sümeyra sohbeti): kelime ilerlemesi (`vocabulary_progress`)
+ve extractor analitiği (`learning_extraction_events`, `grammar_usage_stats` vb.)
+**kalıcı** — bunlar zaten `user_id`'ye bağlı, session'dan bağımsız DB
+tabloları, hiçbir şey silinmiyor. NPC ile yapılan çiğ konuşma geçmişi ise
+**kalıcı olmamalı**: her odaya (yeniden) girişte NPC oyuncuyu ilk defa
+görüyormuş gibi başlamalı.
+
+Bunu engelleyen gerçek sebep CORS/backend değil, oyun istemcisindeydi:
+`RoomScene`/`LibraryScene` Phaser tarafından oyun boyunca **tek bir kez**
+oluşturulur (`scene.start()` eski sahneyi yok etmez, sadece durdurup yeniden
+başlatır), yani `private readonly api = new PraglishApiClient(...)` alanı ve
+onun içindeki önbelleklenmiş `session_id` odaya her dönüşte **aynı** kalıyordu.
+Sonuç: kütüphaneye ilk girişte Lina ile konuşulanlar, oradan ayrılıp
+tekrar kütüphaneye girildiğinde hâlâ aynı `session_id`/`dialogue_history`'ye
+ekleniyordu (harita değiştirince "silinmiyor" demek buydu) — arayüzde eski
+mesajlar görünmese de (panel her `create()`'de sıfırdan render ediliyor),
+NPC'ye gönderilen gerçek geçmiş eskisi gibi büyümeye devam ediyordu.
+
+Düzeltme: `PraglishApiClient.resetSession()` eklendi (yalnızca
+önbellekteki `session_id`'yi unutur, `userId`'yi — yani kelime/coin
+ilerlemesini — korur). Her iki sahne de artık odadan çıkarken
+(`this.events.once(Phaser.Scenes.Events.SHUTDOWN, ...)`) bunu çağırıyor,
+böylece bir sonraki girişte otomatik olarak yeni bir `/api/session/start` +
+boş `dialogue_history` ile başlanıyor. Eski session/dialogue satırları
+DB'den silinmiyor (sadece artık okunmuyorlar) — istenirse ileride ayrı bir
+temizlik/arşivleme işiyle ele alınabilir, şu an için zararsızlar.
+
+## Yanıt süresi (Gemini/Groq "düşünme" süresi)
+
+Bir oyuncu turu (`POST /api/session/{id}/turn`) `ai` servisinde **iki ardışık**
+LLM çağrısı yapar: önce Language Evaluator (`P(U|C,S,L,G)` tahmini), sonra
+sonuca göre ya Correction Module ya da NPC — ikinci çağrı birincinin
+sonucuna bağlı olduğu için paralelleştirilemez (bu, Sümeyra'nın tasarladığı
+pipeline'ın kendisi, değiştirmedik). Extractor çağrıları zaten
+`background_tasks` ile arka planda çalışıyor, oyuncuyu bekletmiyor
+(`api/routes/turn.py`) — yavaşlığın kaynağı bu değildi.
+
+Pipeline'ı bozmadan, mevcut iki-çağrılık akışı hızlandırmak için üç şey
+yaptık:
+
+1. **Evaluator + correction için daha hızlı model.** İkisi de kısa
+   (yüzde + bir cümle, ya da düzeltilmiş cümle + kısa koç notu) yapılandırılmış
+   çıktılar üretiyor — NPC diyaloğu gibi büyük/yaratıcı bir modele ihtiyaçları
+   yok. Groq tarafında varsayılanı `llama-3.3-70b-versatile`'dan Groq'un
+   "instant" (düşük gecikmeli, küçük) modeli `llama-3.1-8b-instant`'a
+   çektik — `GROQ_EVALUATOR_MODEL` / `GROQ_CORRECTION_MODEL` ile ayrı ayrı
+   ayarlanabilir. NPC diyaloğu (`GROQ_MODEL`) karakter kalitesi için büyük
+   modelde kalmaya devam ediyor. Gemini tarafında hangi modelin daha hafif
+   olduğunu bilmediğimiz için zorla değiştirmedik; `GEMINI_EVALUATOR_MODEL`
+   ile isterseniz siz ayarlayabilirsiniz (boşsa `GEMINI_MODEL` ile aynı,
+   yani eski davranış).
+2. **Gönderilen konuşma geçmişini sınırlama.** Oda ziyareti uzadıkça
+   `dialogue_history` büyüyor ve her iki çağrıya da (evaluator + npc/correction)
+   her seferinde daha fazla token gidiyor. `api/services/dialogue_history.py`
+   artık yalnızca son `MAX_DIALOGUE_HISTORY_TURNS` (varsayılan 12, yani ~6
+   karşılıklı konuşma) satırı gönderiyor; DB'den hiçbir şey silinmiyor, sadece
+   o turda modele giden prompt küçülüyor.
+3. **Daha kısa NPC cevapları.** `ai/modules/npc.py`'deki sistem promptuna
+   "1-2 kısa cümle, en fazla 3" kısıtı eklendi — hem oyun içi diyalog için
+   daha doğal (bu bir sohbet, deneme yazısı değil), hem de daha az çıktı
+   token'ı ürettiği için modelin bitirme süresini kısaltıyor.
+
+Yukarıdakiler pipeline'ın adımlarını (evaluator → correction/npc → extractor)
+DEĞİŞTİRMİYOR, yalnızca hangi modelin kullanıldığını ve modele ne kadar
+bağlam gönderildiğini ayarlıyor. Hâlâ yavaş geliyorsa bir sonraki adım
+muhtemelen ağ/Docker Desktop tarafındaki gecikmeyi ölçmek olur (ör.
+`docker compose logs -f ai` ile bir turun ai container'ına ne zaman ulaştığını
+ve ne zaman cevap döndüğünü karşılaştırmak).
+
 ## Paralel çalışma modeli
 
 `api/services/ai_client.py` içinde `USE_MOCK_AI` ortam değişkeni var:

@@ -91,6 +91,26 @@ export class PraglishApiClient {
     return this.sessionPromise;
   }
 
+  /**
+   * Bu odayla olan mevcut oturumu unutur (sessionPromise'i temizler), oyuncunun
+   * userId'sini KORUR (kelime/coin ilerlemesi hep ayni kullaniciya bagli
+   * kalmali). Bir sonraki sendTurn()/submitVocabulary() cagrisi otomatik
+   * olarak yeni bir /api/session/start yapar - yani bos bir dialogue_history
+   * ile, NPC oyuncuyu ilk defa goruyormus gibi baslar.
+   *
+   * Phaser sahne siniflari (RoomScene/LibraryScene) SADECE BIR KEZ
+   * olusturulup oyun boyunca yeniden kullanildigi icin (scene.start() eski
+   * sahneyi yok etmez, sadece durdurup baslatir), buradaki `api` alani ve
+   * onun sessionPromise'i sahneler arasi gecislerde kendiliginden
+   * sifirlanmiyordu - bu da odaya ikinci kez girildiginde NPC'nin onceki
+   * ziyaretin tum konusmasini hatirlamasina yol aciyordu. Sahneler artik bu
+   * metodu "shutdown" (odadan cikis) aninda cagiriyor, boylece her yeni
+   * ziyaret gercekten sifirdan basliyor.
+   */
+  public resetSession(): void {
+    this.sessionPromise = null;
+  }
+
   public async sendTurn(userText: string): Promise<TurnResponse> {
     const sessionId = await this.startSession();
     return this.request<TurnResponse>(`/api/session/${sessionId}/turn`, {
@@ -188,7 +208,7 @@ export class PraglishApiClient {
     } catch (error: unknown) {
       if (error instanceof ApiError) throw error;
       if (error instanceof DOMException && error.name === "AbortError") {
-        throw new ApiError("Speech synthesis took too long.");
+        throw new ApiError("Text-to-speech took too long.");
       }
       throw new ApiError("Text-to-speech service is unavailable.");
     } finally {

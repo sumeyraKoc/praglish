@@ -104,6 +104,15 @@ export class RoomScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Bu sahne sinifi oyun boyunca TEK BIR KEZ olusturulur (Phaser scene.start()
+    // eski sahneyi yok etmez, sadece durdurup yeniden baslatir) - yani `this.api`
+    // alani ve onun onbellekteki oturumu odaya her donusumuzde AYNI kalir. Odadan
+    // ayrilirken (kutuphaneye gecince) oturumu sifirliyoruz ki bir sonraki giriste
+    // Maya oyuncuyu ilk defa goruyormus gibi baslasin - eski konusma DB'den
+    // silinmiyor (extractor/vocabulary analitigi etkilenmiyor), sadece yeni bir
+    // GameSession/dialogue_history ile baslıyoruz.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.api.resetSession());
+
     this.cameras.main.setBackgroundColor("#181525");
     this.createAnimations();
     this.renderMap(this.cache.json.get(MAP_KEY) as BakeryMapData);
@@ -589,12 +598,10 @@ export class RoomScene extends Phaser.Scene {
   }
 
   private renderTurnResult(result: TurnResponse): void {
-    const isCoach = result.response_speaker === "coach";
-    this.appendMessage(
-      isCoach ? "COACH" : "MAYA",
-      result.npc_response,
-      isCoach ? "feedback" : "npc",
-    );
+    this.appendMessage("MAYA", result.npc_response, "npc");
+    if (!result.accepted && result.correction && result.correction !== result.npc_response) {
+      this.appendMessage("SUGGESTION", result.correction, "feedback");
+    }
     if (result.rewards && (result.rewards.gained_xp > 0 || result.rewards.gained_coins > 0)) {
       this.appendMessage(
         "REWARD",

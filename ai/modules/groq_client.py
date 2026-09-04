@@ -16,9 +16,17 @@ import httpx
 
 GROQ_API_BASE = "https://api.groq.com/openai/v1"
 
-# https://console.groq.com/docs/models - "versatile" text model, good default
-# for JSON-mode structured output and free-form NPC dialogue alike.
+# https://console.groq.com/docs/models - "versatile" text model: used for NPC
+# dialogue, where character voice/quality matters most.
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+# Groq's "instant" tier - much lower latency, meant for exactly this kind of
+# short, latency-sensitive JSON output (a percent + one sentence, or a
+# corrected sentence + a short coach tip). Used as the default for the
+# evaluator and correction steps, which sit on the critical path the player
+# waits on for every single turn - unlike NPC dialogue and the extractors
+# (the latter already run in a FastAPI background task), a slow evaluator
+# call is the one that a player feels as "the game is thinking forever".
+DEFAULT_GROQ_FAST_MODEL = "llama-3.1-8b-instant"
 DEFAULT_GROQ_STT_MODEL = "whisper-large-v3-turbo"
 DEFAULT_GROQ_TTS_MODEL = "canopylabs/orpheus-v1-english"
 

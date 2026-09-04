@@ -50,6 +50,11 @@ export interface VocabularyProgressEntry {
   completed: boolean;
 }
 
+export interface SpeechToTextResult {
+  text: string;
+  languageCode: string | null;
+}
+
 export interface PraglishSessionConfig {
   location: string;
   npcRole: string;
@@ -122,6 +127,72 @@ export class PraglishApiClient {
     return this.requestGet<VocabularyProgressEntry[]>(
       `/api/vocabulary/progress/${this.userId}/${this.config.location}`,
     );
+  }
+
+  /**
+   * Oyuncunun mikrofon kaydini (tarayicinin MediaRecorder'i genelde audio/webm
+   * uretir) /api/speech/stt uzerinden yazili metne cevirir. Transkripsiyon
+   * "verbatim" moddadir - dilbilgisi hatalarini DUZELTMEZ, cunku metin bir
+   * sonraki adimda sendTurn() ile ayni dil degerlendirmesinden gecmeli.
+   */
+  public async transcribeAudio(audioBlob: Blob): Promise<SpeechToTextResult> {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+    try {
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "recording.webm");
+      const response = await fetch(`${API_BASE_URL}/api/speech/stt`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { detail?: string } | null;
+        throw new ApiError(
+          payload?.detail ?? `Speech-to-text failed (${response.status})`,
+          response.status,
+        );
+      }
+      const data = await response.json() as { text: string; language_code: string | null };
+      return { text: data.text, languageCode: data.language_code };
+    } catch (error: unknown) {
+      if (error instanceof ApiError) throw error;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new ApiError("Speech recognition took too long. Please try again.");
+      }
+      throw new ApiError("Speech-to-text service is unavailable.");
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  /**
+   * NPC'nin metin cevabini sesli okumasi icin /api/speech/tts'i cagirir ve
+   * calinabilir bir ses Blob'u dondurur (her zaman 24kHz mono audio/wav).
+   */
+  public async synthesizeSpeech(text: string): Promise<Blob> {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30_000);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/speech/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new ApiError(`Text-to-speech failed (${response.status})`, response.status);
+      }
+      return await response.blob();
+    } catch (error: unknown) {
+      if (error instanceof ApiError) throw error;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new ApiError("Speech synthesis took too long.");
+      }
+      throw new ApiError("Text-to-speech service is unavailable.");
+    } finally {
+      window.clearTimeout(timeout);
+    }
   }
 
   private async createSession(): Promise<number> {

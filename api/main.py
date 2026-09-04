@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.database import Base, engine
 from models import models  # noqa: F401 - Base.metadata'ya tablolari kaydettirmek icin import sart
-from routes import leaderboard, session, turn, user, vocabulary
+from routes import leaderboard, session, speech, turn, user, vocabulary
 
 app = FastAPI(title="English World - API Service")
 
@@ -30,6 +30,7 @@ app.include_router(turn.router, prefix="/api/session", tags=["turn"])
 app.include_router(user.router, prefix="/api/user", tags=["user"])
 app.include_router(leaderboard.router, prefix="/api/leaderboard", tags=["leaderboard"])
 app.include_router(vocabulary.router, prefix="/api/vocabulary", tags=["vocabulary"])
+app.include_router(speech.router, prefix="/api/speech", tags=["speech"])
 
 
 @app.on_event("startup")

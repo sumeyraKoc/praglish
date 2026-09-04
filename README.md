@@ -125,6 +125,37 @@ Kabul esigi `.env` icinden degistirilebilir; ornek deger:
 LANGUAGE_ACCEPTANCE_THRESHOLD=50
 ```
 
+### Oyunda konuşarak pratik (mikrofon → STT → tur → TTS)
+
+Oyun istemcisi artık `ai` servisinin `/stt`/`/tts` uçlarını **doğrudan** çağırmaz;
+her ikisi de `api` servisi üzerinden proxy'lenir (`POST /api/speech/stt`,
+`POST /api/speech/tts` — bkz. `api/routes/speech.py` + `api/services/ai_client.py`).
+Bu tercih bilinçli: oyun tarafı (`PraglishApiClient.ts`) tek bir base URL
+(`http://localhost:8000`) bilir, CORS zaten sadece `api`'de tanımlı, ve
+`ai/main.py`'a ayrıca CORS eklemek gerekmiyor.
+
+Akış: Maya/Lina diyalog panelindeki 🎤 butonuna basınca `MediaRecorder` ile
+tarayıcıda kayıt başlar (tekrar basınca durur) → kayıt `/api/speech/stt`'ye
+gönderilir → dönen **verbatim** metin (dilbilgisi hataları düzeltilmez) normal
+yazılı mesaj gibi `/api/session/{id}/turn`'e gider, yani kabul/düzeltme/ödül
+mantığı yazarak da söyleyerek de aynı şekilde çalışır → NPC'nin cevabı
+`/api/speech/tts`'ten sesli olarak çalınır (metin zaten panelde de görünür,
+ses çalma başarısız olursa — mikrofon izni yok, tarayıcı otomatik-oynatmayı
+engelledi, `ai` container kapalı — sessizce yutulur).
+
+Gerçek transkripsiyon/sentez için `ai` container'ının **`GEMINI_API_KEY` ile**
+ayakta olması gerekir; `docker compose up` bunu zaten başlatıyor.
+`npm run dev:mock-api` ile (Docker'sız, sadece oyun) test ederken
+`game/scripts/mock-api.mjs` artık `/api/speech/stt`'ye sabit bir örnek cümle,
+`/api/speech/tts`'e ise geçerli ama **sessiz** bir WAV döner — amaç ses
+kalitesini değil, mikrofon → metin → tur → ses oynatma akışının uçtan uca
+kopmadan çalıştığını görebilmenizdir.
+
+Tarayıcı notu: `getUserMedia` (mikrofon izni) yalnızca "secure context"te
+çalışır — `http://localhost` bunun istisnası olduğu için geliştirmede sorun
+yok, ama demo günü oyunu `http://` ile başka bir makineden/URL'den açarsanız
+mikrofon izni tarayıcı tarafından reddedilir; o durumda HTTPS gerekir.
+
 Şema değişikliği olduğunda (örn. `models/models.py`'de yeni bir **alan** eklendiğinde)
 `create_all()` var olan tabloları güncellemez — bu durumda:
 ```bash
@@ -155,6 +186,8 @@ Postman/curl ile bağımsız test edebilir.
 | `GET /api/leaderboard/` | XP'ye göre ilk 10 kullanıcı |
 | `POST /api/vocabulary/submit` | `{user_id, location, concept, word}` — kelime/eş anlamlı eşleşirse ve daha önce kazanılmadıysa coin verir |
 | `GET /api/vocabulary/progress/{user_id}/{location}` | Kullanıcının o odadaki kelime ilerlemesi |
+| `POST /api/speech/stt` | `multipart/form-data`, alan adı `audio` (+ opsiyonel `language_code` query) — `ai` servisindeki gerçek Gemini STT'ye proxy, `{text, language_code, mode, model, latency_ms}` döner |
+| `POST /api/speech/tts` | `{text, voice?, style?}` — `ai` servisindeki gerçek Gemini TTS'e proxy, ham `audio/wav` bayt dizisi döner |
 
 ## Learning analytics tablolari
 
@@ -201,11 +234,16 @@ Postman/curl ile bağımsız test edebilir.
   vardı, ama oyunda gerçekten çalışan odalar bakery/library'ydi); `cafe`/`hospital`/`school`
   senaryoları `"status": "planned_no_assets_yet"` ile işaretlendi; `ai_client.py`'deki
   mock cevap artık bakery için de doğru (önceden her oda için kahve cevabı dönüyordu)
+- Oyun istemcisinde mikrofon butonu (🎤) → `/api/speech/stt` → tur akışı, ve NPC
+  cevabının `/api/speech/tts`'ten sesli çalınması — hem bakery hem library'de.
+  `api` servisi `ai`'a proxy yapıyor (`api/routes/speech.py`), böylece oyun tek
+  bir base URL biliyor ve `ai/main.py`'a ayrıca CORS eklemek gerekmedi.
+  `game/scripts/mock-api.mjs` de bu iki uca (sabit metin / sessiz WAV ile) destek
+  verecek şekilde güncellendi.
 
-**Sümeyra'da, bekleniyor:**
-- Oyun istemcisindeki mikrofon push-to-talk kontrolunun `/stt` endpoint'ine baglanmasi
-- NPC/correction metninin `/tts` endpoint'inden oynatilmasi
-- Streaming STT/TTS ve oyuncunun NPC konusurken araya girebilmesi
+**Bekleniyor / stretch goal:**
+- Streaming STT/TTS ve oyuncunun NPC konuşurken araya girebilmesi (şu an
+  push-to-talk: kaydet → durdur → gönder, tek seferlik dosya tabanlı)
 
 ## Sıradaki adımlar
 

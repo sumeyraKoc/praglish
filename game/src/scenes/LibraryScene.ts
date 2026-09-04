@@ -48,6 +48,11 @@ export class LibraryScene extends Phaser.Scene {
   private dialogueMessages!: HTMLElement;
   private dialogueStatus!: HTMLElement;
   private dialogueSubmit!: HTMLButtonElement;
+  private dialogueMic!: HTMLButtonElement;
+  private mediaRecorder: MediaRecorder | null = null;
+  private audioChunks: BlobPart[] = [];
+  private isRecording = false;
+  private currentNpcAudio: HTMLAudioElement | null = null;
   private readonly api = new PraglishApiClient({
     location: "library",
     npcRole: "librarian",
@@ -342,6 +347,7 @@ export class LibraryScene extends Phaser.Scene {
         <form class="dialogue-form">
           <input aria-label="Lina'ya İngilizce mesaj" maxlength="240" autocomplete="off"
             placeholder="Type in English…" />
+          <button type="button" class="dialogue-mic" aria-label="Record a spoken message">🎤</button>
           <button type="submit">Send</button>
         </form>
       </section>
@@ -353,6 +359,8 @@ export class LibraryScene extends Phaser.Scene {
     this.dialogueMessages = node.querySelector(".dialogue-messages") as HTMLElement;
     this.dialogueStatus = node.querySelector(".dialogue-status") as HTMLElement;
     this.dialogueSubmit = node.querySelector("button[type='submit']") as HTMLButtonElement;
+    this.dialogueMic = node.querySelector(".dialogue-mic") as HTMLButtonElement;
+    this.dialogueMic.addEventListener("click", () => void this.toggleRecording());
     node.querySelector(".dialogue-close")?.addEventListener("click", () => this.closeDialogue());
     node.addEventListener("pointerdown", (event) => event.stopPropagation());
     this.dialogueForm.addEventListener("submit", (event) => {
@@ -422,8 +430,110 @@ export class LibraryScene extends Phaser.Scene {
   }
 
   private closeDialogue(): void {
+    if (this.isRecording) this.stopRecording();
+    this.currentNpcAudio?.pause();
     this.dialogue.setVisible(false);
     this.dialogueInput.blur();
+  }
+
+  /**
+   * Mikrofon butonu: ilk tikta kayda baslar, ikinci tikta durdurur. Ses
+   * tarayicida MediaRecorder ile toplanir, /api/speech/stt'ye gonderilir
+   * ve donen metin normal bir yazili mesaj gibi submitDialogueTurn()'e
+   * verilir - boylece ayni dil degerlendirme akisi (kabul/duzeltme/odul)
+   * yazarak da soyleyerek de calisir.
+   */
+  private async toggleRecording(): Promise<void> {
+    if (this.isRecording) {
+      this.stopRecording();
+      return;
+    }
+    if (this.dialogueSubmit.disabled || this.dialogueMic.disabled) return;
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      this.dialogueStatus.textContent = "Microphone is not supported in this browser.";
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      this.audioChunks = [];
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) this.audioChunks.push(event.data);
+      });
+      recorder.addEventListener("stop", () => {
+        stream.getTracks().forEach((track) => track.stop());
+        void this.handleRecordedAudio();
+      });
+      this.mediaRecorder = recorder;
+      recorder.start();
+      this.isRecording = true;
+      this.dialogueMic.textContent = "⏹";
+      this.dialogueMic.classList.add("recording");
+      this.dialogueStatus.textContent = "Recording… click the mic again when you're done.";
+    } catch {
+      this.dialogueStatus.textContent = "Microphone access was denied.";
+    }
+  }
+
+  private stopRecording(): void {
+    this.mediaRecorder?.stop();
+    this.isRecording = false;
+    this.dialogueMic.textContent = "🎤";
+    this.dialogueMic.classList.remove("recording");
+  }
+
+  private async handleRecordedAudio(): Promise<void> {
+    const recordedType = this.mediaRecorder?.mimeType || "audio/webm";
+    const blob = new Blob(this.audioChunks, { type: recordedType });
+    this.audioChunks = [];
+    if (blob.size === 0) {
+      this.dialogueStatus.textContent = "No audio captured - try again.";
+      return;
+    }
+
+    this.dialogueMic.disabled = true;
+    this.dialogueStatus.textContent = "Transcribing…";
+    try {
+      const { text } = await this.api.transcribeAudio(blob);
+      if (!text.trim()) {
+        this.dialogueStatus.textContent = "Couldn't hear anything - try again.";
+        return;
+      }
+      this.dialogueInput.value = text;
+      await this.submitDialogueTurn();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Speech recognition failed.";
+      this.appendMessage("SYSTEM", message, "error");
+      this.dialogueStatus.textContent = "Speech recognition failed.";
+    } finally {
+      this.dialogueMic.disabled = false;
+    }
+  }
+
+  /**
+   * NPC'nin metnini /api/speech/tts uzerinden seslendirir ve calar. Bu adim
+   * salt gorsel/isitsel bir eklenti - basarisiz olursa (mikrofon izni, ses
+   * cikisi engelleyen tarayici otomatik-oynatma politikasi, ai servisi
+   * kapali...) sessizce yutulur, cunku metin zaten dialogue panelinde
+   * gorunur durumda.
+   */
+  private async speakNpcResponse(text: string): Promise<void> {
+    try {
+      const audioBlob = await this.api.synthesizeSpeech(text);
+      const url = URL.createObjectURL(audioBlob);
+      if (this.currentNpcAudio) {
+        this.currentNpcAudio.pause();
+        URL.revokeObjectURL(this.currentNpcAudio.src);
+      }
+      const audio = new Audio(url);
+      this.currentNpcAudio = audio;
+      audio.addEventListener("ended", () => URL.revokeObjectURL(url));
+      await audio.play();
+    } catch {
+      // Sessiz basarisizlik - yukaridaki JSDoc'a bakin.
+    }
   }
 
   private async submitDialogueTurn(): Promise<void> {
@@ -463,6 +573,7 @@ export class LibraryScene extends Phaser.Scene {
         "reward",
       );
     }
+    void this.speakNpcResponse(result.npc_response);
   }
 
   private appendMessage(author: string, text: string, kind: string): void {

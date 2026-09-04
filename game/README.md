@@ -31,13 +31,20 @@ değerini tanımlayın.
 
 Docker/Python olmadan yalnızca arayüz akışını geliştirmek için ayrı bir
 terminalde `npm run dev:mock-api` kullanılabilir. Bu geliştirme sunucusu gerçek
-AI değildir; gerçek FastAPI ile aynı session/turn sözleşmesini taklit eder.
+AI değildir; gerçek FastAPI ile aynı session/turn/vocabulary/speech
+sözleşmesini taklit eder (mikrofon → metin dönüşümü sabit bir örnek cümle
+döner, NPC sesi ise geçerli ama sessiz bir WAV'dır — gerçek Gemini STT/TTS
+için `ai` container'ının `GEMINI_API_KEY` ile ayakta olması gerekir).
 
 ## Kontroller
 
 - Zemine tıkla: oyuncuyu A* pathfinding ile yürütür.
-- `E`: NPC yakındayken konuşmayı açar.
-- `Esc`: konuşma panelini kapatır.
+- `E`: NPC yakındayken konuşmayı açar, bir eşyanın yakınındayken adını
+  söyleme panelini açar.
+- Konuşma panelindeki 🎤 butonu: mikrofonla kayda başlar/durdurur, kayıt
+  `/api/speech/stt` ile metne çevrilip normal bir mesaj gibi gönderilir; NPC
+  cevabı `/api/speech/tts` üzerinden sesli çalınır.
+- `Esc`: konuşma / kelime panelini kapatır.
 - `B`: kütüphaneden fırına geçer.
 - `L`: fırından kütüphaneye geçer.
 
@@ -50,4 +57,6 @@ npm run build
 ```
 
 Maya ve Lina konuşma panelleri `api` servisindeki session/turn akışına bağlıdır;
-AI cevapları, düzeltmeler ve ödüller aynı panelde gösterilir.
+AI cevapları, düzeltmeler ve ödüller aynı panelde gösterilir. Mikrofonla konuşma
+tarayıcının `getUserMedia`/`MediaRecorder` API'lerini kullanır ve yalnızca
+"secure context"te (örn. `http://localhost` veya HTTPS) çalışır.

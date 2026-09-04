@@ -247,8 +247,32 @@ export class LibraryScene extends Phaser.Scene {
     try {
       const progress = await this.api.getVocabularyProgress();
       this.applyVocabularyProgress(progress);
+      this.warnOnUnknownConcepts(progress);
     } catch {
       // Sessizce yut - ilerleme cache'i yalnizca UX rozeti icin, oyunu bloke etmemeli.
+    }
+  }
+
+  /**
+   * Gelistirme zamani tutarlilik kontrolu: ASSET_CONCEPT (libraryMap.ts) bir concept
+   * tanimliyor ama backend'in api/game_data/vocabulary/library.json dosyasinda o
+   * concept yoksa (yazim hatasi, unutulmus ekleme...), oyuncu o esyanin yaninda
+   * hicbir zaman coin kazanamaz - tek belirti backend'den gelen sessiz bir
+   * "Concept not found" hatasidir. Bunu erken, konsola acikca yazdirarak
+   * yakaliyoruz ki iki taraf birbirinden kopunca demo gunune kadar fark edilmeden
+   * kalmasin. Kelime/es anlamli listeleri burada tutulmuyor - tek paylasilan sey
+   * concept id string'leri, onlarin dogrulugunu burada kontrol ediyoruz.
+   */
+  private warnOnUnknownConcepts(progress: VocabularyProgressEntry[]): void {
+    const knownConcepts = new Set(progress.map((entry) => entry.concept));
+    const usedConcepts = new Set(this.interactables.map((item) => item.concept));
+    const unknown = [...usedConcepts].filter((concept) => !knownConcepts.has(concept));
+    if (unknown.length > 0) {
+      console.warn(
+        "[Praglish] libraryMap.ts > ASSET_CONCEPT bu concept'leri kullaniyor ama " +
+          `api/game_data/vocabulary/library.json'da tanimli degiller: ${unknown.join(", ")}. ` +
+          "Oyuncu bu esyalar icin coin kazanamayacak - iki dosyayi senkronlayin.",
+      );
     }
   }
 

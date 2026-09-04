@@ -67,6 +67,12 @@
         {"word": "plant", "reward_coins": 10},
         {"word": "potted plant", "reward_coins": 10}
       ]
+    },
+    {
+      "concept": "egg_tart",
+      "words": [
+        {"word": "egg tart", "reward_coins": 10}
+      ]
     }
   ]
 }

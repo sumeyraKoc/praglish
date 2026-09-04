@@ -10,6 +10,7 @@ interface GuestCredentials {
 
 interface SessionStartResponse {
   session_id: number;
+  user_id: number;
 }
 
 export interface RewardInfo {
@@ -26,6 +27,27 @@ export interface TurnResponse {
   probability_percent: number | null;
   evaluation_reason: string | null;
   rewards: RewardInfo | null;
+}
+
+export interface VocabularySubmitResponse {
+  matched: boolean;
+  already_earned: boolean;
+  reward_coins: number;
+  words_earned?: number;
+  words_total?: number;
+  concept_completed?: boolean;
+  total_coins?: number;
+}
+
+export interface VocabularyProgressWord {
+  word: string;
+  earned: boolean;
+}
+
+export interface VocabularyProgressEntry {
+  concept: string;
+  words: VocabularyProgressWord[];
+  completed: boolean;
 }
 
 export interface PraglishSessionConfig {
@@ -49,6 +71,7 @@ export class ApiError extends Error {
 
 export class PraglishApiClient {
   private sessionPromise: Promise<number> | null = null;
+  private userId: number | null = null;
 
   constructor(private readonly config: PraglishSessionConfig = DEFAULT_SESSION_CONFIG) {}
 
@@ -69,6 +92,38 @@ export class PraglishApiClient {
     });
   }
 
+  /**
+   * Bir esyanin yaninda oyuncunun yazdigi/soyledigi kelimeyi backend'e gonderir.
+   * Kelimenin dogru olup olmadigina, daha once kazanilip kazanilmadigina ve odul
+   * miktarina backend (VocabularyEngine) karar verir - burada ikinci bir kelime
+   * listesi tutmuyoruz, cift kaynak olusmasin diye.
+   */
+  public async submitVocabulary(concept: string, word: string): Promise<VocabularySubmitResponse> {
+    await this.startSession();
+    if (this.userId === null) {
+      throw new ApiError("No active session yet - cannot submit vocabulary.");
+    }
+    return this.request<VocabularySubmitResponse>("/api/vocabulary/submit", {
+      user_id: this.userId,
+      location: this.config.location,
+      concept,
+      word,
+    });
+  }
+
+  /**
+   * Bu odada oyuncunun daha once hangi concept/kelimeleri kazandigini getirir.
+   * UI'da "already learned" rozetini gostermek ve gereksiz yeniden deneme
+   * istemi vermemek icin sahne acilisinda bir kere cagrilip cache'lenmeli.
+   */
+  public async getVocabularyProgress(): Promise<VocabularyProgressEntry[]> {
+    await this.startSession();
+    if (this.userId === null) return [];
+    return this.requestGet<VocabularyProgressEntry[]>(
+      `/api/vocabulary/progress/${this.userId}/${this.config.location}`,
+    );
+  }
+
   private async createSession(): Promise<number> {
     const credentials = this.getGuestCredentials();
     const response = await this.request<SessionStartResponse>("/api/session/start", {
@@ -76,19 +131,34 @@ export class PraglishApiClient {
       location: this.config.location,
       npc_role: this.config.npcRole,
     });
+    this.userId = response.user_id;
     return response.session_id;
   }
 
   private async request<T>(path: string, body: object): Promise<T> {
+    return this.performFetch<T>(path, { method: "POST", body });
+  }
+
+  private async requestGet<T>(path: string): Promise<T> {
+    return this.performFetch<T>(path, { method: "GET" });
+  }
+
+  private async performFetch<T>(
+    path: string,
+    options: { method: "GET" | "POST"; body?: object },
+  ): Promise<T> {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 125_000);
     try {
-      const response = await fetch(`${API_BASE_URL}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      // headers/body sadece govdesi olan istekler icin set edilir; RequestInit'e
+      // acikca `undefined` atamiyoruz (tsconfig'deki exactOptionalPropertyTypes
+      // bunu reddeder), bunun yerine key'i hic eklemiyoruz.
+      const init: RequestInit = { method: options.method, signal: controller.signal };
+      if (options.body !== undefined) {
+        init.headers = { "Content-Type": "application/json" };
+        init.body = JSON.stringify(options.body);
+      }
+      const response = await fetch(`${API_BASE_URL}${path}`, init);
       if (!response.ok) {
         const payload = await response.json().catch(() => null) as { detail?: string } | null;
         throw new ApiError(payload?.detail ?? `API request failed (${response.status})`, response.status);

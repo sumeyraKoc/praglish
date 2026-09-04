@@ -50,3 +50,35 @@ export const LIBRARY_ASSETS: LibraryAsset[] = [
   { gid: 161, key: "library-wall-books-n", file: "wallBooks_N.png" },
   { gid: 164, key: "library-wall-door", file: "wallDoorway_E.png" },
 ];
+
+/**
+ * Hangi render/texture key'in hangi vocabulary "concept"ine karsilik geldigi.
+ * Bircok farkli PNG (orn. candleStandDouble_E vs _N, ya da bes farkli bookcase
+ * varyanti) ayni concept'e eslenebilir - concept string'leri
+ * api/game_data/vocabulary/library.json ile birebir ayni olmali. Burada
+ * olmayan key'ler (floor, wall-door, empty book stand) dekoratif kabul edilir
+ * ve etkilesime acilmaz.
+ */
+export const ASSET_CONCEPT: Record<string, string> = {
+  "library-bookcase-glass": "bookcase",
+  "library-bookcase-half": "bookcase",
+  "library-bookcase-wide": "bookcase",
+  "library-bookcase-desk": "bookcase",
+  "library-bookcase-ladder": "bookcase",
+  "library-book-stand": "book",
+  "library-candle": "candle",
+  "library-candle-double-e": "candle",
+  "library-candle-double-n": "candle",
+  "library-display": "display_case",
+  "library-display-books": "display_case",
+  "library-display-open": "display_case",
+  "library-display-sword": "display_case",
+  "library-carpet": "carpet",
+  "library-carpet-end-e": "carpet",
+  "library-carpet-end-w": "carpet",
+  "library-table": "table",
+  "library-table-decorated": "chair",
+  "library-table-books": "book",
+  "library-wall-books-e": "bookcase",
+  "library-wall-books-n": "bookcase",
+};

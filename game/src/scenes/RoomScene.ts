@@ -3,8 +3,13 @@ import { calculateDepth } from "../engine/DepthSort";
 import { gridToScreen, IsoConfig, screenToGrid } from "../engine/IsometricMath";
 import { findPath, PathfindingGrid } from "../engine/PathFinder";
 import { IsoAvatar } from "../entities/IsoAvatar";
-import { PraglishApiClient, TurnResponse } from "../services/PraglishApiClient";
-import { BAKERY_ASSETS, BakeryMapData, TileLayer } from "./bakeryMap";
+import {
+  PraglishApiClient,
+  TurnResponse,
+  VocabularyProgressEntry,
+  VocabularySubmitResponse,
+} from "../services/PraglishApiClient";
+import { ASSET_CONCEPT, BAKERY_ASSETS, BakeryMapData, TileLayer } from "./bakeryMap";
 
 const MAP_KEY = "bakery-map";
 const TILE_SIZE = 64;
@@ -37,6 +42,14 @@ const COUNTER_ASSETS = new Set([
   "cash-register",
 ]);
 
+const INTERACT_RANGE = 1.5;
+
+interface Interactable {
+  x: number;
+  y: number;
+  concept: string;
+}
+
 export class RoomScene extends Phaser.Scene {
   private avatar!: IsoAvatar;
   private npc!: Phaser.GameObjects.Sprite;
@@ -51,6 +64,20 @@ export class RoomScene extends Phaser.Scene {
   private blockedTiles = new Set<string>();
   private npcGrid = { x: 1, y: 1, z: 0 };
   private npcCollisionGrid = this.calculateNpcCollisionGrid();
+
+  // Vocabulary ("name it") etkilesim durumu
+  private interactables: Interactable[] = [];
+  private interactableTileKeys = new Set<string>();
+  private earnedWords = new Map<string, Set<string>>();
+  private nearestInteractable: Interactable | null = null;
+  private vocabHint!: Phaser.GameObjects.Text;
+  private vocabPanel!: Phaser.GameObjects.DOMElement;
+  private vocabForm!: HTMLFormElement;
+  private vocabInput!: HTMLInputElement;
+  private vocabMessages!: HTMLElement;
+  private vocabStatus!: HTMLElement;
+  private vocabSubmit!: HTMLButtonElement;
+  private vocabActiveConcept: string | null = null;
 
   constructor() {
     super("RoomScene");
@@ -86,25 +113,35 @@ export class RoomScene extends Phaser.Scene {
 
     this.createNpc();
     this.createUi();
+    void this.loadVocabularyProgress();
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (!this.dialogue.visible) this.handleClickToWalk(pointer.worldX, pointer.worldY);
+      if (!this.dialogue.visible && !this.vocabPanel.visible) {
+        this.handleClickToWalk(pointer.worldX, pointer.worldY);
+      }
     });
-    this.input.keyboard?.on("keydown-E", () => {
-      if (!this.dialogue.visible) this.tryInteract();
+    this.input.keyboard?.on("keydown-E", () => this.handleInteractKey());
+    this.input.keyboard?.on("keydown-ESC", () => {
+      this.closeDialogue();
+      this.closeVocabPanel();
     });
-    this.input.keyboard?.on("keydown-ESC", () => this.closeDialogue());
     this.input.keyboard?.on("keydown-L", () => {
-      if (!this.dialogue.visible) this.scene.start("LibraryScene");
+      if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("LibraryScene");
     });
   }
 
   update(): void {
-    const distance = Math.hypot(
+    const npcDistance = Math.hypot(
       this.avatar.grid.x - this.npcCollisionGrid.x,
       this.avatar.grid.y - this.npcCollisionGrid.y,
     );
-    this.hint.setVisible(distance <= 1.5 && !this.dialogue.visible);
+    const npcNear = npcDistance <= INTERACT_RANGE;
+    const panelOpen = this.dialogue.visible || this.vocabPanel.visible;
+
+    this.hint.setVisible(npcNear && !panelOpen);
+
+    this.nearestInteractable = npcNear ? null : this.findNearestInteractable();
+    this.vocabHint.setVisible(!npcNear && !panelOpen && this.nearestInteractable !== null);
   }
 
   private createAnimations(): void {
@@ -200,7 +237,55 @@ export class RoomScene extends Phaser.Scene {
       );
 
       if (FURNITURE_LAYERS.has(layer.name)) this.blockedTiles.add(`${gridX},${gridY}`);
+
+      this.registerInteractable(asset.key, gridX, gridY);
     });
+  }
+
+  /**
+   * asset.key -> vocabulary concept eslemesi varsa (bkz. bakeryMap.ts ASSET_CONCEPT),
+   * bu tile'i "eşyanın yanına git, adını söyle" etkilesimine acik hale getirir.
+   * Ayni koordinata birden fazla katmandan tile dusebildigi icin tekrar eklemeyi
+   * interactableTileKeys ile engelliyoruz.
+   */
+  private registerInteractable(assetKey: string, gridX: number, gridY: number): void {
+    const concept = ASSET_CONCEPT[assetKey];
+    if (!concept) return;
+    const tileKey = `${gridX},${gridY}`;
+    if (this.interactableTileKeys.has(tileKey)) return;
+    this.interactableTileKeys.add(tileKey);
+    this.interactables.push({ x: gridX, y: gridY, concept });
+  }
+
+  private findNearestInteractable(): Interactable | null {
+    let nearest: Interactable | null = null;
+    let nearestDistance = Infinity;
+    for (const item of this.interactables) {
+      const distance = Math.hypot(this.avatar.grid.x - item.x, this.avatar.grid.y - item.y);
+      if (distance <= INTERACT_RANGE && distance < nearestDistance) {
+        nearest = item;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
+  }
+
+  private async loadVocabularyProgress(): Promise<void> {
+    try {
+      const progress = await this.api.getVocabularyProgress();
+      this.applyVocabularyProgress(progress);
+    } catch {
+      // Sessizce yut - ilerleme cache'i yalnizca UX rozeti icin, oyunu bloke etmemeli.
+    }
+  }
+
+  private applyVocabularyProgress(progress: VocabularyProgressEntry[]): void {
+    for (const entry of progress) {
+      const earned = new Set(
+        entry.words.filter((w) => w.earned).map((w) => w.word.toLowerCase()),
+      );
+      this.earnedWords.set(entry.concept, earned);
+    }
   }
 
   private createNpc(): void {
@@ -239,6 +324,14 @@ export class RoomScene extends Phaser.Scene {
       padding: { x: 16, y: 9 },
     }).setOrigin(0.5).setScrollFactor(0).setDepth(100000).setVisible(false);
 
+    this.vocabHint = this.add.text(640, 660, "E  ·  NAME IT", {
+      fontFamily: "Arial Black, Arial, sans-serif",
+      fontSize: "18px",
+      color: "#182219",
+      backgroundColor: "#8fd3a5",
+      padding: { x: 16, y: 9 },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100000).setVisible(false);
+
     this.dialogue = this.add.dom(640, 590).createFromHTML(`
       <section class="dialogue-panel" aria-label="Maya ile konuşma">
         <header class="dialogue-header">
@@ -269,25 +362,66 @@ export class RoomScene extends Phaser.Scene {
       event.preventDefault();
       void this.submitDialogueTurn();
     });
+
+    this.vocabPanel = this.add.dom(640, 590).createFromHTML(`
+      <section class="dialogue-panel vocab-panel" aria-label="Bir eşyayı isimlendir">
+        <header class="dialogue-header">
+          <div><strong>NAME IT</strong><span>VOCABULARY</span></div>
+          <button class="dialogue-close" type="button" aria-label="Kapat">ESC · close</button>
+        </header>
+        <div class="dialogue-messages" aria-live="polite">
+          <p class="dialogue-system">What is this called in English?</p>
+        </div>
+        <div class="dialogue-status">Type the word and press Enter</div>
+        <form class="dialogue-form">
+          <input aria-label="Eşyanın İngilizce adı" maxlength="60" autocomplete="off"
+            placeholder="e.g. bread" />
+          <button type="submit">Submit</button>
+        </form>
+      </section>
+    `).setOrigin(0.5, 0.5).setScrollFactor(0).setDepth(100001).setVisible(false);
+
+    const vocabNode = this.vocabPanel.node as HTMLElement;
+    this.vocabForm = vocabNode.querySelector(".dialogue-form") as HTMLFormElement;
+    this.vocabInput = vocabNode.querySelector("input") as HTMLInputElement;
+    this.vocabMessages = vocabNode.querySelector(".dialogue-messages") as HTMLElement;
+    this.vocabStatus = vocabNode.querySelector(".dialogue-status") as HTMLElement;
+    this.vocabSubmit = vocabNode.querySelector("button[type='submit']") as HTMLButtonElement;
+    vocabNode.querySelector(".dialogue-close")?.addEventListener("click", () => this.closeVocabPanel());
+    vocabNode.addEventListener("pointerdown", (event) => event.stopPropagation());
+    this.vocabForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void this.submitVocabWord();
+    });
   }
 
-  private tryInteract(): void {
-    const distance = Math.hypot(
+  private handleInteractKey(): void {
+    if (this.dialogue.visible || this.vocabPanel.visible) return;
+
+    const npcDistance = Math.hypot(
       this.avatar.grid.x - this.npcCollisionGrid.x,
       this.avatar.grid.y - this.npcCollisionGrid.y,
     );
-    if (distance <= 1.5) {
-      this.dialogue.setVisible(true);
-      this.dialogueInput.focus();
-      this.dialogueStatus.textContent = "Connecting to Praglish…";
-      void this.api.startSession()
-        .then(() => {
-          this.dialogueStatus.textContent = "Connected · English practice mode";
-        })
-        .catch((error: unknown) => {
-          this.dialogueStatus.textContent = error instanceof Error ? error.message : "Connection failed";
-        });
+    if (npcDistance <= INTERACT_RANGE) {
+      this.tryInteract();
+      return;
     }
+    if (this.nearestInteractable) {
+      this.openVocabPanel(this.nearestInteractable.concept);
+    }
+  }
+
+  private tryInteract(): void {
+    this.dialogue.setVisible(true);
+    this.dialogueInput.focus();
+    this.dialogueStatus.textContent = "Connecting to Praglish…";
+    void this.api.startSession()
+      .then(() => {
+        this.dialogueStatus.textContent = "Connected · English practice mode";
+      })
+      .catch((error: unknown) => {
+        this.dialogueStatus.textContent = error instanceof Error ? error.message : "Connection failed";
+      });
   }
 
   private closeDialogue(): void {
@@ -351,6 +485,112 @@ export class RoomScene extends Phaser.Scene {
     this.dialogueInput.disabled = busy;
     this.dialogueSubmit.disabled = busy;
     this.dialogueSubmit.textContent = busy ? "…" : "Send";
+  }
+
+  // --- Vocabulary ("name it") paneli ---
+
+  private openVocabPanel(concept: string): void {
+    this.vocabActiveConcept = concept;
+    this.vocabMessages.innerHTML = "";
+    const alreadyKnown = [...(this.earnedWords.get(concept) ?? [])];
+    if (alreadyKnown.length > 0) {
+      this.appendVocabMessage(
+        "ALREADY LEARNED",
+        `You already earned: ${alreadyKnown.join(", ")}. Try a synonym for more coins!`,
+        "already",
+      );
+    } else {
+      const system = document.createElement("p");
+      system.className = "dialogue-system";
+      system.textContent = "What is this called in English?";
+      this.vocabMessages.append(system);
+    }
+    this.vocabStatus.textContent = "Type the word and press Enter";
+    this.vocabInput.value = "";
+    this.vocabPanel.setVisible(true);
+    this.vocabHint.setVisible(false);
+    this.vocabInput.focus();
+  }
+
+  private closeVocabPanel(): void {
+    this.vocabPanel.setVisible(false);
+    this.vocabInput.blur();
+    this.vocabActiveConcept = null;
+  }
+
+  private async submitVocabWord(): Promise<void> {
+    const word = this.vocabInput.value.trim();
+    const concept = this.vocabActiveConcept;
+    if (!word || !concept || this.vocabSubmit.disabled) return;
+
+    this.vocabInput.value = "";
+    this.appendVocabMessage("YOU", word, "user");
+    this.setVocabBusy(true);
+    this.vocabStatus.textContent = "Checking…";
+
+    try {
+      const result = await this.api.submitVocabulary(concept, word);
+      this.renderVocabResult(concept, word, result);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Something went wrong.";
+      this.appendVocabMessage("SYSTEM", message, "error");
+      this.vocabStatus.textContent = "Connection failed · retry when the API is running";
+    } finally {
+      this.setVocabBusy(false);
+      this.vocabInput.focus();
+    }
+  }
+
+  private renderVocabResult(
+    concept: string,
+    word: string,
+    result: VocabularySubmitResponse,
+  ): void {
+    if (!result.matched) {
+      this.appendVocabMessage("HINT", "Not quite - try another word for this object.", "feedback");
+      this.vocabStatus.textContent = "Try again";
+      return;
+    }
+
+    if (result.already_earned) {
+      this.appendVocabMessage("ALREADY LEARNED", `You already earned "${word}".`, "already");
+      this.vocabStatus.textContent = "Try a different synonym for more coins";
+      return;
+    }
+
+    const earned = this.earnedWords.get(concept) ?? new Set<string>();
+    earned.add(word.toLowerCase());
+    this.earnedWords.set(concept, earned);
+
+    this.appendVocabMessage(
+      "REWARD",
+      `Correct! +${result.reward_coins} coins` +
+        (result.words_total ? ` (${result.words_earned}/${result.words_total} words for this object)` : ""),
+      "reward",
+    );
+    if (result.concept_completed) {
+      this.appendVocabMessage("DONE", "All synonyms for this object are learned!", "already");
+    }
+    this.vocabStatus.textContent = "Nice! Try a synonym for more coins, or press ESC.";
+  }
+
+  private appendVocabMessage(author: string, text: string, kind: string): void {
+    this.vocabMessages.querySelector(".dialogue-system")?.remove();
+    const message = document.createElement("div");
+    message.className = `dialogue-message ${kind}`;
+    const label = document.createElement("strong");
+    label.textContent = author;
+    const copy = document.createElement("span");
+    copy.textContent = text;
+    message.append(label, copy);
+    this.vocabMessages.append(message);
+    this.vocabMessages.scrollTop = this.vocabMessages.scrollHeight;
+  }
+
+  private setVocabBusy(busy: boolean): void {
+    this.vocabInput.disabled = busy;
+    this.vocabSubmit.disabled = busy;
+    this.vocabSubmit.textContent = busy ? "…" : "Submit";
   }
 
   private handleClickToWalk(screenX: number, screenY: number): void {

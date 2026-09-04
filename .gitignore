@@ -5,3 +5,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+*.wav
+node_modules/
+dist/
+.pnpm-store/

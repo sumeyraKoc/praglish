@@ -9,6 +9,11 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d english_world"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
 
   ai:
     build:
@@ -20,6 +25,9 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
       - LANGUAGE_ACCEPTANCE_THRESHOLD=${LANGUAGE_ACCEPTANCE_THRESHOLD:-50}
+      - STT_MODEL=${STT_MODEL:-gemini-3.5-transcribe}
+      - STT_MAX_AUDIO_BYTES=${STT_MAX_AUDIO_BYTES:-10485760}
+      - TTS_MODEL=${TTS_MODEL:-gemini-3.1-flash-tts-preview}
     volumes:
       - whisper_cache:/root/.cache
       - ./ai:/app          # canli kod guncelleme - --reload bunu izler
@@ -34,13 +42,32 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/english_world
       - AI_SERVICE_URL=http://ai:8001
-      - USE_MOCK_AI=true
+      - USE_MOCK_AI=${USE_MOCK_AI:-false}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
     depends_on:
-      - db
-      - ai
+      db:
+        condition: service_healthy
+      ai:
+        condition: service_started
     volumes:
       - ./api:/app          # canli kod guncelleme - --reload bunu izler
       - ./shared:/app/shared
+
+  game:
+    build:
+      context: .
+      dockerfile: game/Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      api:
+        condition: service_started
+    volumes:
+      - ./game/src:/app/src
+      - ./game/public:/app/public
+      - ./game/index.html:/app/index.html
 
 volumes:
   pgdata:

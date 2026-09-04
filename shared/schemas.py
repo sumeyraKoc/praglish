@@ -60,6 +60,48 @@ class LanguageEvaluationResult(PlausibilityEstimate):
     accepted: bool
 
 
+class GrammarFinding(BaseModel):
+    topic_id: int = Field(ge=1, le=50)
+    topic_name: str
+    count: int = Field(default=1, ge=1)
+    evidence: list[str] = Field(default_factory=list)
+    issue: Optional[str] = None
+
+
+class VocabularyFinding(BaseModel):
+    lemma: str
+    surface_form: str
+    part_of_speech: Literal["noun", "adjective"]
+    cefr_level: Literal["A1", "A2", "B1", "B2", "C1", "C2"]
+    count: int = Field(default=1, ge=1)
+    issue: Optional[str] = None
+
+
+class IdiomFinding(BaseModel):
+    idiom: str
+    normalized_idiom: str
+    count: int = Field(default=1, ge=1)
+    issue: Optional[str] = None
+
+
+class ExtractionRequest(BaseModel):
+    utterance: str
+    outcome: Literal["correct", "incorrect"]
+    context: str
+    speaker: str
+    listener: str
+    communicative_goals: list[str] = Field(default_factory=list)
+    dialogue_history: list[DialogueTurn] = Field(default_factory=list)
+    evaluation_reason: Optional[str] = None
+
+
+class ExtractionResult(BaseModel):
+    outcome: Literal["correct", "incorrect"]
+    grammar: list[GrammarFinding] = Field(default_factory=list)
+    vocabulary: list[VocabularyFinding] = Field(default_factory=list)
+    idioms: list[IdiomFinding] = Field(default_factory=list)
+
+
 class EvaluateRequest(BaseModel):
     location: str  # orn: "cafe"
     npc_role: str  # orn: "barista"
@@ -80,11 +122,15 @@ class EvaluateResponse(BaseModel):
     correction: Optional[str] = None
     npc_response: str
     updated_scenario_state: dict = Field(default_factory=dict)
+    probability_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    evaluation_reason: Optional[str] = None
     rewards: Optional[RewardInfo] = None
 
 
 class TTSRequest(BaseModel):
     text: str
+    voice: str = "Kore"
+    style: str = "Speak naturally, warmly, and at a patient conversational pace."
 
 
 class TTSResponse(BaseModel):
@@ -93,3 +139,7 @@ class TTSResponse(BaseModel):
 
 class STTResponse(BaseModel):
     text: str
+    language_code: Optional[str] = None
+    mode: Literal["verbatim"] = "verbatim"
+    model: str
+    latency_ms: int = Field(ge=0)

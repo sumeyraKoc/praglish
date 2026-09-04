@@ -64,7 +64,7 @@ class GeminiPlausibilityEstimator:
 class LanguageEvaluator:
     """Model tahminini ayarlanabilir ve deterministik bir threshold'a cevirir."""
 
-    def __init__(self, estimator: PlausibilityEstimator, threshold: float = 98):
+    def __init__(self, estimator: PlausibilityEstimator, threshold: float = 50):
         if not 0 <= threshold <= 100:
             raise ValueError("threshold must be between 0 and 100")
         self.estimator = estimator

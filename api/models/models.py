@@ -75,3 +75,63 @@ class VocabularyProgress(Base):
     concept = Column(String)
     word = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class LearningExtractionEvent(Base):
+    """Bir kullanici cumlesi icin ham ve denetlenebilir extractor sonucu."""
+
+    __tablename__ = "learning_extraction_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dialogue_id = Column(Integer, ForeignKey("dialogues.id"), unique=True, nullable=False)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    outcome = Column(String, nullable=False)  # correct / incorrect
+    utterance = Column(String, nullable=False)
+    raw_result = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class GrammarUsageStat(Base):
+    __tablename__ = "grammar_usage_stats"
+    __table_args__ = (
+        UniqueConstraint("user_id", "outcome", "topic_id", name="uq_grammar_usage_stat"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    outcome = Column(String, nullable=False)
+    topic_id = Column(Integer, nullable=False)
+    topic_name = Column(String, nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+
+
+class VocabularyLevelStat(Base):
+    __tablename__ = "vocabulary_level_stats"
+    __table_args__ = (
+        UniqueConstraint("user_id", "outcome", "cefr_level", name="uq_vocabulary_level_stat"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    outcome = Column(String, nullable=False)
+    cefr_level = Column(String, nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+
+
+class IdiomUsageStat(Base):
+    __tablename__ = "idiom_usage_stats"
+    __table_args__ = (
+        UniqueConstraint("user_id", "outcome", "normalized_idiom", name="uq_idiom_usage_stat"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    outcome = Column(String, nullable=False)
+    normalized_idiom = Column(String, nullable=False)
+    display_idiom = Column(String, nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+    first_used_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_used_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

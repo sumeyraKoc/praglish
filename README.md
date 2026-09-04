@@ -18,8 +18,9 @@ docker compose up --build
 
 ### Terminalden AI pipeline demosu
 
-Ilk prototipte STT/TTS text-in/text-out calisir. Language Evaluator, Gemini
-Flash-Lite ile `P(U | C,S,L,G)` icin baglamsal bir makulluk yuzdesi tahmin eder.
+Terminal pipeline demosu text-in/text-out calisir. AI servisindeki gercek STT/TTS
+endpoint'leri ayri olarak kullanilir. Language Evaluator, Gemini Flash-Lite ile
+`P(U | C,S,L,G)` icin baglamsal bir makulluk yuzdesi tahmin eder.
 Ayarlanabilir threshold'u gecemeyen cumle Correction Module'a, kabul edilen
 cumle ise Gemini tabanli NPC'ye gider:
 
@@ -42,6 +43,30 @@ AI servisindeki `POST /extract` endpoint'i yapilandirilmis sonucu dondurur. API
 servisi bu sonucu PostgreSQL'deki ham event tablosuna ve ayri
 `correct`/`incorrect` sayaclarina atomik olarak kaydeder. Ayni `dialogue_id`
 tekrar islenirse sayaclar ikinci kez artmaz.
+
+### STT/TTS ilk denemesi
+
+AI servisinin `POST /stt` endpoint'i kisa push-to-talk kayitlarini
+`gemini-3.5-transcribe` modeline inline gonderir. Transkripsiyon her zaman
+`verbatim` modundadir; boylece ogrencinin gramer hatalari ve duraksamalari
+evaluator'a ulasmadan temizlenmez.
+
+```bash
+curl -X POST "http://localhost:8001/stt?language_code=en-US&custom_vocabulary=espresso,latte" \
+  -F "audio=@sample.wav"
+```
+
+`POST /tts` metni Gemini TTS ile 24 kHz mono WAV'a cevirir:
+
+```bash
+curl -X POST http://localhost:8001/tts \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Certainly. Would you like milk?","voice":"Kore"}' \
+  --output npc.wav
+```
+
+Ilk prototip dosya/tek cumle tabanlidir. Streaming ve konusma kesme destegi
+push-to-talk akisi dogrulandiktan sonra eklenecektir.
 
 Kabul esigi `.env` icinden degistirilebilir; ornek deger:
 
@@ -100,16 +125,15 @@ Postman/curl ile bağımsız test edebilir.
 **Bitti, test edildi:**
 - Docker/Compose (iki servisli mimari: api + ai + db)
 - DB modelleri (User, GameSession, Dialogue, VocabularyProgress)
+- Gemini push-to-talk STT (`verbatim`) ve WAV TTS endpoint'leri
 - Auth (basit username+şifre, hackathon MVP seviyesinde)
 - Session başlatma + turn akışı (kaydet → değerlendir → ödüllendir → senaryo kontrolü)
 - Ödül motoru, leaderboard, vocabulary sistemi
 
 **Sümeyra'da, bekleniyor:**
-- Terminaldeki modüler evaluator/correction/Gemini NPC akışının `ai/main.py`
-  endpoint'ine bağlanması
-- STT/TTS entegrasyonu
-- ⚠️ Öncelikli test: STT'nin bozuk gramerli cümleleri sessizce "düzeltip düzeltmediği"
-  — evaluator'ın doğruluğu buna bağlı, gerçek entegrasyondan önce erken test edilmeli
+- Oyun istemcisindeki mikrofon push-to-talk kontrolunun `/stt` endpoint'ine baglanmasi
+- NPC/correction metninin `/tts` endpoint'inden oynatilmasi
+- Streaming STT/TTS ve oyuncunun NPC konusurken araya girebilmesi
 
 **Hiç başlanmadı:**
 - Oyun client'ı (Phaser, ikisi birlikte)

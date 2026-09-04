@@ -129,6 +129,8 @@ class EvaluateResponse(BaseModel):
 
 class TTSRequest(BaseModel):
     text: str
+    voice: str = "Kore"
+    style: str = "Speak naturally, warmly, and at a patient conversational pace."
 
 
 class TTSResponse(BaseModel):
@@ -137,3 +139,7 @@ class TTSResponse(BaseModel):
 
 class STTResponse(BaseModel):
     text: str
+    language_code: Optional[str] = None
+    mode: Literal["verbatim"] = "verbatim"
+    model: str
+    latency_ms: int = Field(ge=0)

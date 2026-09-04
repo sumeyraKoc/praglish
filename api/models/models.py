@@ -22,8 +22,8 @@ class GameSession(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    location = Column(String)  # orn: "cafe", "hospital"
-    npc_role = Column(String)  # orn: "barista", "doctor"
+    location = Column(String)  # aktif: "bakery", "library" (planlanan: "cafe", "hospital", "school")
+    npc_role = Column(String)  # aktif: "baker", "librarian"
     scenario_state = Column(JSON, default=dict)  # dict, {} degil - mutable default tuzagi
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

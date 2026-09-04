@@ -1,0 +1,72 @@
+{
+  "location": "bakery",
+  "concepts": [
+    {
+      "concept": "bread",
+      "words": [
+        {"word": "bread", "reward_coins": 10},
+        {"word": "loaf", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "croissant",
+      "words": [
+        {"word": "croissant", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "cookie",
+      "words": [
+        {"word": "cookie", "reward_coins": 10},
+        {"word": "biscuit", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "cake",
+      "words": [
+        {"word": "cake", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "pie",
+      "words": [
+        {"word": "pie", "reward_coins": 10},
+        {"word": "meat pie", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "counter",
+      "words": [
+        {"word": "counter", "reward_coins": 10},
+        {"word": "display counter", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "cash_register",
+      "words": [
+        {"word": "cash register", "reward_coins": 10},
+        {"word": "till", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "tray",
+      "words": [
+        {"word": "tray", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "shelf",
+      "words": [
+        {"word": "shelf", "reward_coins": 10},
+        {"word": "rack", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "plant",
+      "words": [
+        {"word": "plant", "reward_coins": 10},
+        {"word": "potted plant", "reward_coins": 10}
+      ]
+    }
+  ]
+}

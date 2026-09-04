@@ -2,6 +2,7 @@
   "scenario_id": "bakery",
   "name": "Buying Something at a Bakery",
   "npc_role": "baker",
+  "status": "active",
   "initial_state": {
     "item": null,
     "quantity": null

@@ -2,6 +2,8 @@
   "scenario_id": "cafe",
   "name": "Ordering Coffee",
   "npc_role": "barista",
+  "status": "planned_no_assets_yet",
+  "status_note": "Original MVP room. No matching Phaser scene/tileset assets found yet - not reachable in the current game client. Kept for when cafe assets are found; flip status to \"active\" and add vocabulary/cafe.json's counterpart concepts once it's wired into game/src/scenes.",
   "initial_state": {
     "drink": null,
     "size": null,

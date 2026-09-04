@@ -1,0 +1,53 @@
+{
+  "location": "library",
+  "concepts": [
+    {
+      "concept": "book",
+      "words": [
+        {"word": "book", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "bookcase",
+      "words": [
+        {"word": "bookcase", "reward_coins": 10},
+        {"word": "bookshelf", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "table",
+      "words": [
+        {"word": "table", "reward_coins": 10},
+        {"word": "desk", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "chair",
+      "words": [
+        {"word": "chair", "reward_coins": 10},
+        {"word": "seat", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "candle",
+      "words": [
+        {"word": "candle", "reward_coins": 10},
+        {"word": "candlestick", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "carpet",
+      "words": [
+        {"word": "carpet", "reward_coins": 10},
+        {"word": "rug", "reward_coins": 10}
+      ]
+    },
+    {
+      "concept": "display_case",
+      "words": [
+        {"word": "display case", "reward_coins": 10},
+        {"word": "cabinet", "reward_coins": 10}
+      ]
+    }
+  ]
+}

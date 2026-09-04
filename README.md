@@ -165,11 +165,26 @@ Postman/curl ile bağımsız test edebilir.
 
 ## Statik oyun verisi (`api/game_data/`)
 
-- `scenarios/{bakery,library,cafe,hospital,school}.json` — her odanın `required_fields`'ı, başlangıç
-  state'i ve tamamlama ödülü. Yeni oda eklemek için kod değiştirmeye gerek yok, sadece
-  yeni bir JSON dosyası ekleyin.
-- `vocabulary/cafe.json` — şu an sadece cafe için var. `hospital.json`/`school.json`
-  eklenmezse `VocabularyEngine` sessizce boş concept listesi döner, hata vermez.
+- `scenarios/bakery.json`, `scenarios/library.json` — **aktif** odalar (`"status": "active"`).
+  Oyun istemcisinde gerçek Tiled haritası, asset'i ve NPC'si (Maya / Lina) olan tek iki oda
+  bunlar; `game/src/scenes/RoomScene.ts` (bakery) ve `LibraryScene.ts` (library).
+- `scenarios/cafe.json`, `scenarios/hospital.json`, `scenarios/school.json` — **planlanan**
+  odalar (`"status": "planned_no_assets_yet"`). İlk MVP tasarımında bu üç oda vardı, ama
+  oyun istemcisi için uygun asset bulunamadı; `game/` içinde bunlara karşılık gelen bir
+  Scene/harita yok, dolayısıyla oyuncu şu an bu odalara hiç giremiyor. Senaryo tasarımını
+  kaybetmemek için dosyaları silmedik. Assetleri bulunduğunda: `status`'u `"active"` yapın,
+  `vocabulary/{location}.json` ekleyin, `ai/main.py`'deki `NPC_PROFILES`'a NPC kimliğini
+  ekleyin ve `api/services/ai_client.py`'deki `MOCK_RESPONSES`'a bir mock cevap ekleyin.
+- `vocabulary/bakery.json`, `vocabulary/library.json` — aktif odaların kelime/eş anlamlı
+  ekonomisi (obje adını yaz/söyle → coin kazan, eş anlamlılar bitince o obje için ödül
+  kesilir). Daha önce yalnızca `vocabulary/cafe.json` vardı; oyunda gerçekten çalışan
+  odalar bakery ve library olduğu için bu ikisinde vocabulary hiç yoktu ve
+  `/api/vocabulary/*` endpoint'leri bu iki oda için sürekli boş/404 dönüyordu. Artık
+  gerçek asset listesine göre (ekmek, kruvasan, kitap, sandalye, vb.) dolduruldu.
+- `vocabulary/cafe.json` — `cafe` senaryosu gibi planlanan durumda, oyun istemcisinde
+  karşılığı olmadığı için şu an fiilen kullanılmıyor. `hospital.json`/`school.json` için
+  vocabulary dosyası hâlâ yok; eklenmezse `VocabularyEngine` sessizce boş concept listesi
+  döner, hata vermez.
 
 ## Tamamlanan / kalan işler
 
@@ -182,6 +197,10 @@ Postman/curl ile bağımsız test edebilir.
 - Ödül motoru, leaderboard, vocabulary sistemi
 - Phaser oyun istemcisi, fırın/kütüphane haritaları, hareket ve çarpışma
 - Maya ve Lina konuşma panellerinin session/turn akışına bağlanması
+- `vocabulary/bakery.json` ve `vocabulary/library.json` eklendi (önceden sadece cafe
+  vardı, ama oyunda gerçekten çalışan odalar bakery/library'ydi); `cafe`/`hospital`/`school`
+  senaryoları `"status": "planned_no_assets_yet"` ile işaretlendi; `ai_client.py`'deki
+  mock cevap artık bakery için de doğru (önceden her oda için kahve cevabı dönüyordu)
 
 **Sümeyra'da, bekleniyor:**
 - Oyun istemcisindeki mikrofon push-to-talk kontrolunun `/stt` endpoint'ine baglanmasi

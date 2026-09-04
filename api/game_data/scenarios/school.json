@@ -2,6 +2,8 @@
   "scenario_id": "school",
   "name": "Talking to the Teacher",
   "npc_role": "teacher",
+  "status": "planned_no_assets_yet",
+  "status_note": "Original MVP room. No matching Phaser scene/tileset assets found yet - not reachable in the current game client. Kept for when school assets are found; flip status to \"active\" and add a game_data/vocabulary/school.json once it's wired into game/src/scenes.",
   "initial_state": {
     "topic": null,
     "understood": null

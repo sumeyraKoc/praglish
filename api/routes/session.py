@@ -13,8 +13,8 @@ router = APIRouter()
 class SessionStartRequest(BaseModel):
     username: str
     password: str
-    location: str  # orn: "cafe"
-    npc_role: str  # orn: "barista"
+    location: str  # orn: "bakery" (aktif odalar: bakery, library)
+    npc_role: str  # orn: "baker"
 
 
 @router.post("/start")

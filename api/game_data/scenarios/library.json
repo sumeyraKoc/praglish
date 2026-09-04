@@ -2,6 +2,7 @@
   "scenario_id": "library",
   "name": "Finding and Borrowing a Book",
   "npc_role": "librarian",
+  "status": "active",
   "initial_state": {
     "book_topic": null,
     "borrowing_intent": null

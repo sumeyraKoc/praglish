@@ -2,6 +2,8 @@
   "scenario_id": "hospital",
   "name": "Doctor Visit",
   "npc_role": "doctor",
+  "status": "planned_no_assets_yet",
+  "status_note": "Original MVP room. No matching Phaser scene/tileset assets found yet - not reachable in the current game client. Kept for when hospital assets are found; flip status to \"active\" and add a game_data/vocabulary/hospital.json once it's wired into game/src/scenes.",
   "initial_state": {
     "symptom": null,
     "duration": null,

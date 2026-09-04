@@ -103,8 +103,8 @@ class ExtractionResult(BaseModel):
 
 
 class EvaluateRequest(BaseModel):
-    location: str  # orn: "cafe"
-    npc_role: str  # orn: "barista"
+    location: str  # orn: "bakery"
+    npc_role: str  # orn: "baker"
     scenario_state: dict = Field(default_factory=dict)
     dialogue_history: list[DialogueTurn] = Field(default_factory=list)
     user_text: str

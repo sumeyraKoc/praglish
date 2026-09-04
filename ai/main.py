@@ -8,7 +8,9 @@ from dotenv import load_dotenv
 
 from modules import (
     CorrectionModule,
+    CorrectionProvider,
     CorrectExtractor,
+    ExtractionProvider,
     GeminiCorrectionProvider,
     GeminiCorrectExtractionProvider,
     GeminiIncorrectExtractionProvider,
@@ -16,9 +18,20 @@ from modules import (
     GeminiSpeechToTextProvider,
     GeminiTextToSpeechProvider,
     GeminiTextGenerator,
+    GroqCorrectionProvider,
+    GroqCorrectExtractionProvider,
+    GroqIncorrectExtractionProvider,
+    GroqPlausibilityEstimator,
+    GroqSpeechToTextProvider,
+    GroqTextToSpeechProvider,
+    GroqTextGenerator,
     IncorrectExtractor,
     LanguageEvaluator,
     NpcModule,
+    PlausibilityEstimator,
+    SpeechToTextProvider,
+    TextGenerator,
+    TextToSpeechProvider,
 )
 
 from shared.schemas import (
@@ -54,70 +67,142 @@ NPC_PROFILES = {
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "ai"}
+    try:
+        ai_provider = _active_ai_provider()
+    except RuntimeError:
+        # Keep /health itself green even with no key configured yet - it's a
+        # liveness probe, not a config check. The concrete error still
+        # surfaces the first time an actual AI endpoint is called below.
+        ai_provider = "unconfigured"
+    return {"status": "ok", "service": "ai", "ai_provider": ai_provider}
 
 
-@lru_cache
-def get_correct_extraction_provider() -> GeminiCorrectExtractionProvider:
-    return GeminiCorrectExtractionProvider(
-        api_key=os.getenv("GEMINI_API_KEY", ""),
-        model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+def _active_ai_provider() -> str:
+    """Pick which AI backend to use, based on which API key is configured.
+
+    Gemini and Groq are wired as interchangeable implementations of the same
+    Protocols (see ai/modules/*.py), so the whole service can run on either
+    one without any other code changing. GEMINI_API_KEY wins when both are
+    set - the historical default behaviour of this service - so an existing
+    .env with only a Gemini key keeps working exactly as before. Setting
+    GROQ_API_KEY instead (e.g. because Gemini is down or rate-limited) is
+    enough to move every AI call over to Groq. This selection happens once
+    per process (the results are cached via @lru_cache below); switching
+    providers means changing .env and restarting the ai container.
+    """
+
+    if os.getenv("GEMINI_API_KEY", "").strip():
+        return "gemini"
+    if os.getenv("GROQ_API_KEY", "").strip():
+        return "groq"
+    raise RuntimeError(
+        "No AI provider is configured. Set GEMINI_API_KEY or GROQ_API_KEY in .env."
     )
 
 
 @lru_cache
-def get_incorrect_extraction_provider() -> GeminiIncorrectExtractionProvider:
-    return GeminiIncorrectExtractionProvider(
-        api_key=os.getenv("GEMINI_API_KEY", ""),
-        model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+def get_correct_extraction_provider() -> ExtractionProvider:
+    if _active_ai_provider() == "gemini":
+        return GeminiCorrectExtractionProvider(
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        )
+    return GroqCorrectExtractionProvider(
+        api_key=os.getenv("GROQ_API_KEY", ""),
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    )
+
+
+@lru_cache
+def get_incorrect_extraction_provider() -> ExtractionProvider:
+    if _active_ai_provider() == "gemini":
+        return GeminiIncorrectExtractionProvider(
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        )
+    return GroqIncorrectExtractionProvider(
+        api_key=os.getenv("GROQ_API_KEY", ""),
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
     )
 
 
 @lru_cache
 def get_language_evaluator() -> LanguageEvaluator:
-    return LanguageEvaluator(
-        estimator=GeminiPlausibilityEstimator(
+    estimator: PlausibilityEstimator
+    if _active_ai_provider() == "gemini":
+        estimator = GeminiPlausibilityEstimator(
             api_key=os.getenv("GEMINI_API_KEY", ""),
             model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
-        ),
+        )
+    else:
+        estimator = GroqPlausibilityEstimator(
+            api_key=os.getenv("GROQ_API_KEY", ""),
+            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+        )
+    return LanguageEvaluator(
+        estimator=estimator,
         threshold=float(os.getenv("LANGUAGE_ACCEPTANCE_THRESHOLD", "90")),
     )
 
 
 @lru_cache
 def get_correction_module() -> CorrectionModule:
-    return CorrectionModule(
-        GeminiCorrectionProvider(
+    provider: CorrectionProvider
+    if _active_ai_provider() == "gemini":
+        provider = GeminiCorrectionProvider(
             api_key=os.getenv("GEMINI_API_KEY", ""),
             model=os.getenv(
                 "CORRECTION_MODEL",
                 os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
             ),
         )
+    else:
+        provider = GroqCorrectionProvider(
+            api_key=os.getenv("GROQ_API_KEY", ""),
+            model=os.getenv(
+                "GROQ_CORRECTION_MODEL",
+                os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            ),
+        )
+    return CorrectionModule(provider)
+
+
+@lru_cache
+def get_npc_generator() -> TextGenerator:
+    if _active_ai_provider() == "gemini":
+        return GeminiTextGenerator(
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+        )
+    return GroqTextGenerator(
+        api_key=os.getenv("GROQ_API_KEY", ""),
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
     )
 
 
 @lru_cache
-def get_npc_generator() -> GeminiTextGenerator:
-    return GeminiTextGenerator(
-        api_key=os.getenv("GEMINI_API_KEY", ""),
-        model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+def get_stt_provider() -> SpeechToTextProvider:
+    if _active_ai_provider() == "gemini":
+        return GeminiSpeechToTextProvider(
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=os.getenv("STT_MODEL", "gemini-3.5-transcribe"),
+        )
+    return GroqSpeechToTextProvider(
+        api_key=os.getenv("GROQ_API_KEY", ""),
+        model=os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo"),
     )
 
 
 @lru_cache
-def get_stt_provider() -> GeminiSpeechToTextProvider:
-    return GeminiSpeechToTextProvider(
-        api_key=os.getenv("GEMINI_API_KEY", ""),
-        model=os.getenv("STT_MODEL", "gemini-3.5-transcribe"),
-    )
-
-
-@lru_cache
-def get_tts_provider() -> GeminiTextToSpeechProvider:
-    return GeminiTextToSpeechProvider(
-        api_key=os.getenv("GEMINI_API_KEY", ""),
-        model=os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview"),
+def get_tts_provider() -> TextToSpeechProvider:
+    if _active_ai_provider() == "gemini":
+        return GeminiTextToSpeechProvider(
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=os.getenv("TTS_MODEL", "gemini-3.1-flash-tts-preview"),
+        )
+    return GroqTextToSpeechProvider(
+        api_key=os.getenv("GROQ_API_KEY", ""),
+        model=os.getenv("GROQ_TTS_MODEL", "canopylabs/orpheus-v1-english"),
     )
 
 

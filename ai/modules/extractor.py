@@ -14,6 +14,13 @@ from shared.schemas import (
     VocabularyFinding,
 )
 
+from .groq_client import (
+    DEFAULT_GROQ_MODEL,
+    build_groq_client,
+    groq_chat_json,
+    json_schema_instruction,
+)
+
 
 CORRECT_PROMPT_PATH = (
     Path(__file__).resolve().parents[1] / "prompts" / "correct_extractor.txt"
@@ -150,6 +157,61 @@ class GeminiIncorrectExtractionProvider(_GeminiExtractionProvider):
         api_key: str,
         model: str = "gemini-3.5-flash-lite",
     ):
+        super().__init__(
+            api_key=api_key,
+            prompt_path=INCORRECT_PROMPT_PATH,
+            result_type=IncorrectExtractionResult,
+            model=model,
+        )
+
+
+class _GroqExtractionProvider:
+    """Groq (OpenAI-compatible chat-completions, JSON mode) extraction adapter.
+
+    Mirrors `_GeminiExtractionProvider`: same prompt files, same result
+    types, only the underlying model API differs.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        prompt_path: Path,
+        result_type: type[CorrectExtractionResult] | type[IncorrectExtractionResult],
+        model: str = DEFAULT_GROQ_MODEL,
+    ):
+        self._client = build_groq_client(api_key)
+        self._model = model
+        self._result_type = result_type
+        self._system_instruction = prompt_path.read_text(
+            encoding="utf-8"
+        ) + json_schema_instruction(result_type.model_json_schema())
+
+    def analyze(self, request: ExtractionRequest) -> ExtractionResult:
+        content = groq_chat_json(
+            self._client,
+            model=self._model,
+            system_instruction=self._system_instruction,
+            user_content=request.model_dump_json(indent=2),
+        )
+        return self._result_type.model_validate_json(content)
+
+
+class GroqCorrectExtractionProvider(_GroqExtractionProvider):
+    """Groq adapter that can only use the correct-usage prompt."""
+
+    def __init__(self, api_key: str, model: str = DEFAULT_GROQ_MODEL):
+        super().__init__(
+            api_key=api_key,
+            prompt_path=CORRECT_PROMPT_PATH,
+            result_type=CorrectExtractionResult,
+            model=model,
+        )
+
+
+class GroqIncorrectExtractionProvider(_GroqExtractionProvider):
+    """Groq adapter that can only use the incorrect-usage prompt."""
+
+    def __init__(self, api_key: str, model: str = DEFAULT_GROQ_MODEL):
         super().__init__(
             api_key=api_key,
             prompt_path=INCORRECT_PROMPT_PATH,

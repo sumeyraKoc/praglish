@@ -4,6 +4,8 @@ from typing import Protocol
 
 from shared.schemas import DialogueTurn, NPCIdentity
 
+from .groq_client import DEFAULT_GROQ_MODEL, build_groq_client
+
 
 class TextGenerator(Protocol):
     def generate(
@@ -11,6 +13,16 @@ class TextGenerator(Protocol):
         identity: NPCIdentity,
         dialogue_history: list[DialogueTurn],
     ) -> str: ...
+
+
+def _npc_system_instruction(identity: NPCIdentity) -> str:
+    return (
+        "You are an NPC in an English-learning role-play game. "
+        "Stay strictly in character. Continue the scenario naturally and concisely. "
+        "Do not evaluate or correct the user's English; the language evaluator has "
+        "already accepted every user turn you receive. Ask at most one question per turn.\n\n"
+        f"NPC identity and scenario data:\n{identity.model_dump_json(indent=2)}"
+    )
 
 
 class GeminiTextGenerator:
@@ -42,13 +54,7 @@ class GeminiTextGenerator:
     ) -> str:
         from google.genai import types
 
-        system_instruction = (
-            "You are an NPC in an English-learning role-play game. "
-            "Stay strictly in character. Continue the scenario naturally and concisely. "
-            "Do not evaluate or correct the user's English; the language evaluator has "
-            "already accepted every user turn you receive. Ask at most one question per turn.\n\n"
-            f"NPC identity and scenario data:\n{identity.model_dump_json(indent=2)}"
-        )
+        system_instruction = _npc_system_instruction(identity)
         conversation = "\n".join(
             f"{turn.speaker.upper()}: {turn.text}" for turn in dialogue_history
         )
@@ -66,6 +72,45 @@ class GeminiTextGenerator:
         reply = (response.text or "").strip()
         if not reply:
             raise RuntimeError("Gemini returned an empty response")
+        return reply
+
+
+class GroqTextGenerator:
+    """Groq (OpenAI-compatible chat-completions) NPC dialogue adapter.
+
+    Same system prompt as `GeminiTextGenerator`; the dialogue history is
+    translated into standard OpenAI-style `user`/`assistant` chat turns
+    instead of one flattened "SPEAKER: text" block.
+    """
+
+    def __init__(self, api_key: str, model: str = DEFAULT_GROQ_MODEL):
+        self._client = build_groq_client(api_key)
+        self._model = model
+
+    def generate(
+        self,
+        identity: NPCIdentity,
+        dialogue_history: list[DialogueTurn],
+    ) -> str:
+        messages = [
+            {"role": "system", "content": _npc_system_instruction(identity)}
+        ]
+        for turn in dialogue_history:
+            role = "user" if turn.speaker == "user" else "assistant"
+            messages.append({"role": role, "content": turn.text})
+
+        response = self._client.post(
+            "/chat/completions",
+            json={
+                "model": self._model,
+                "temperature": 0.7,
+                "messages": messages,
+            },
+        )
+        response.raise_for_status()
+        reply = (response.json()["choices"][0]["message"]["content"] or "").strip()
+        if not reply:
+            raise RuntimeError("Groq returned an empty response")
         return reply
 
 

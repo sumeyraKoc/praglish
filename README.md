@@ -25,9 +25,53 @@ Ayrıntılar için `game/README.md` dosyasına bakın.
 ## Çalıştırma
 
 ```bash
-cp .env.example .env   # GEMINI_API_KEY'i doldurun
+cp .env.example .env   # GEMINI_API_KEY'i (veya GROQ_API_KEY'i) doldurun
 docker compose up --build
 ```
+
+### AI sağlayıcısı: Gemini + Groq (yedeklilik)
+
+`ai` servisindeki **her** AI çağrısı (dil değerlendirme, correction coach,
+extractor'lar, NPC diyaloğu, STT, TTS) tek bir sağlayıcıya değil, ortak bir
+Protocol arayüzüne bağlıdır (`ai/modules/*.py` içindeki `*Provider`
+sınıfları). Bunun sayesinde aynı işi yapan iki farklı somut uygulama var:
+`Gemini*Provider` ve `Groq*Provider`. Hangisinin kullanılacağına
+`ai/main.py > _active_ai_provider()` şu kurala göre karar verir:
+
+- `.env`'de `GEMINI_API_KEY` doluysa → Gemini kullanılır (bugüne kadarki
+  varsayılan davranış, hiçbir şey değişmedi).
+- `GEMINI_API_KEY` boş/silinmiş ve `GROQ_API_KEY` doluysa → **tüm** AI
+  çağrıları otomatik olarak Groq'a döner.
+- İkisi de boşsa ilk AI çağrısında (health check'te değil) açık bir hata
+  alırsınız: `"No AI provider is configured..."`.
+
+Yani Gemini tarafında bir kesinti/limit sorunu yaşanırsa, `.env`'de
+`GEMINI_API_KEY` satırını silip (veya boşaltıp) `GROQ_API_KEY`'i doldurup
+`docker compose up --build ai` ile yalnızca `ai` container'ını yeniden
+başlatmak yeterli - `api` ve `game` tarafında hiçbir değişiklik gerekmez,
+ikisi de `ai` servisini aynı `/evaluate-and-respond`, `/stt`, `/tts` vb.
+uçlarla çağırmaya devam eder.
+
+Groq tarafı `groq` SDK'sı yerine Groq'un OpenAI-uyumlu REST uçlarına
+doğrudan `httpx` ile gider (`ai/modules/groq_client.py`), böylece ekstra bir
+bağımlılık eklemeye gerek kalmadı:
+
+| Yetenek | Gemini | Groq |
+|---|---|---|
+| Dil değerlendirme / correction / extractor (yapılandırılmış JSON) | `gemini-3.5-flash-lite`, `response_json_schema` | `llama-3.3-70b-versatile`, JSON mode (`GROQ_MODEL`) |
+| NPC diyaloğu | `gemini-3.5-flash-lite` | `llama-3.3-70b-versatile` (`GROQ_MODEL`) |
+| STT | `gemini-3.5-transcribe`, verbatim mod | `whisper-large-v3-turbo` (`GROQ_STT_MODEL`) - Whisper zaten harfiyen yazar, dilbilgisini düzeltmez |
+| TTS | `gemini-3.1-flash-tts-preview`, 24 kHz WAV | `canopylabs/orpheus-v1-english` (`GROQ_TTS_MODEL`), zaten WAV döner |
+
+Not: Gemini ve Groq'un ses isimleri farklı (`Kore` vs. `hannah`/`troy`/...).
+`GroqTextToSpeechProvider` tanımadığı bir ses adı görürse (ör. varsayılan
+`Kore`) sessizce kendi varsayılanına düşer, hata vermez - oyun tarafının
+hangi sağlayıcının aktif olduğunu bilmesine gerek yok.
+
+Bu, **çalışma zamanında** istek başına otomatik failover değildir (yani
+Gemini bir istekte patlarsa o istek anında Groq'a düşmez) - hangi anahtar
+`.env`'de dolu ise o sağlayıcı kullanılır. İki anahtarı da girip gerçek
+istek-bazlı failover istenirse bu kolay bir sonraki adım.
 
 ### Windows'ta tam sistemi çalıştırma
 
@@ -37,7 +81,7 @@ Yeni bir PowerShell penceresinde repoyu klonlayıp proje klasörüne girin:
 git clone https://github.com/sumeyraKoc/praglish.git
 cd praglish
 Copy-Item .env.example .env
-# .env içindeki GEMINI_API_KEY değerini kendi anahtarınızla değiştirin.
+# .env içindeki GEMINI_API_KEY (veya GROQ_API_KEY) değerini kendi anahtarınızla değiştirin.
 docker compose up --build -d
 docker compose ps
 ```
@@ -52,8 +96,8 @@ docker compose logs -f game api ai db
 Oyun da Compose tarafından Node.js 24 container'ında başlatılır; bilgisayara
 ayrıca Node.js veya npm kurmak gerekmez. `http://localhost:5173` adresini açın.
 Maya ve Lina konuşma istemcileri varsayılan olarak `http://localhost:8000`
-adresindeki gerçek API'yi kullanır. Gemini anahtarı olmadan yalnızca akışı
-denemek için `.env` dosyasına `USE_MOCK_AI=true` eklenebilir.
+adresindeki gerçek API'yi kullanır. Gemini/Groq anahtarı olmadan yalnızca
+akışı denemek için `.env` dosyasına `USE_MOCK_AI=true` eklenebilir.
 
 Yalnızca container'ları durdurmak için:
 
@@ -65,15 +109,15 @@ PostgreSQL verisini de silerek tamamen sıfırlamak için ancak bilinçli olarak
 `docker compose down -v` kullanın.
 
 - api → http://localhost:8000/docs
-- ai  → http://localhost:8001/docs
+- ai  → http://localhost:8001/docs (`GET /health` aktif sağlayıcıyı da döner: `{"ai_provider": "gemini" | "groq" | "unconfigured"}`)
 
 ### Terminalden AI pipeline demosu
 
-Terminal pipeline demosu text-in/text-out calisir. AI servisindeki gercek STT/TTS
-endpoint'leri ayri olarak kullanilir. Language Evaluator, Gemini Flash-Lite ile
-`P(U | C,S,L,G)` icin baglamsal bir makulluk yuzdesi tahmin eder.
-Ayarlanabilir threshold'u gecemeyen cumle Correction Module'a, kabul edilen
-cumle ise Gemini tabanli NPC'ye gider:
+Terminal pipeline demosu text-in/text-out calisir (`ai/cli.py`, su an
+sadece Gemini ile calisiyor). AI servisindeki gercek STT/TTS endpoint'leri
+ayri olarak kullanilir. Language Evaluator, `P(U | C,S,L,G)` icin baglamsal
+bir makulluk yuzdesi tahmin eder. Ayarlanabilir threshold'u gecemeyen cumle
+Correction Module'a, kabul edilen cumle ise NPC'ye gider:
 
 ```bash
 pip install -r ai/requirements.txt
@@ -108,11 +152,11 @@ tekrar islenirse sayaclar ikinci kez artmaz.
 
 ### Correction coach
 
-Evaluator bir cumleyi reddettiginde correction modulu Gemini'ye yalnizca reddedilen
-son cumleyi ve evaluator'a verilen filtrelenmis dialogue history'yi gonderir. Cikti,
-duzeltilmis cumle ile kisa bir coach aciklamasini ayri alanlarda tasir. Bu akis
-`python -m ai.cli` icinde otomatik calisir. Modulu AI servisi uzerinden bagimsiz
-denemek icin:
+Evaluator bir cumleyi reddettiginde correction modulu aktif AI saglayicisina
+(Gemini veya Groq) yalnizca reddedilen son cumleyi ve evaluator'a verilen
+filtrelenmis dialogue history'yi gonderir. Cikti, duzeltilmis cumle ile kisa
+bir coach aciklamasini ayri alanlarda tasir. Bu akis `python -m ai.cli` icinde
+otomatik calisir. Modulu AI servisi uzerinden bagimsiz denemek icin:
 
 ```powershell
 $body = @{
@@ -134,17 +178,18 @@ kaydedilmez.
 
 ### STT/TTS ilk denemesi
 
-AI servisinin `POST /stt` endpoint'i kisa push-to-talk kayitlarini
-`gemini-3.5-transcribe` modeline inline gonderir. Transkripsiyon her zaman
-`verbatim` modundadir; boylece ogrencinin gramer hatalari ve duraksamalari
-evaluator'a ulasmadan temizlenmez.
+AI servisinin `POST /stt` endpoint'i kisa push-to-talk kayitlarini aktif
+saglayiciya (Gemini `gemini-3.5-transcribe` veya Groq `whisper-large-v3-turbo`)
+gonderir. Transkripsiyon her zaman `verbatim` modundadir; boylece ogrencinin
+gramer hatalari ve duraksamalari evaluator'a ulasmadan temizlenmez.
 
 ```bash
 curl -X POST "http://localhost:8001/stt?language_code=en-US&custom_vocabulary=espresso,latte" \
   -F "audio=@sample.wav"
 ```
 
-`POST /tts` metni Gemini TTS ile 24 kHz mono WAV'a cevirir:
+`POST /tts` metni aktif saglayicinin TTS'i ile WAV'a cevirir (Gemini: 24 kHz
+mono; Groq: Orpheus, zaten WAV):
 
 ```bash
 curl -X POST http://localhost:8001/tts \
@@ -180,9 +225,9 @@ mantığı yazarak da söyleyerek de aynı şekilde çalışır → NPC'nin ceva
 ses çalma başarısız olursa — mikrofon izni yok, tarayıcı otomatik-oynatmayı
 engelledi, `ai` container kapalı — sessizce yutulur).
 
-Gerçek transkripsiyon/sentez için `ai` container'ının **`GEMINI_API_KEY` ile**
-ayakta olması gerekir; `docker compose up` bunu zaten başlatıyor.
-`npm run dev:mock-api` ile (Docker'sız, sadece oyun) test ederken
+Gerçek transkripsiyon/sentez için `ai` container'ının **`GEMINI_API_KEY` veya
+`GROQ_API_KEY` ile** ayakta olması gerekir; `docker compose up` bunu zaten
+başlatıyor. `npm run dev:mock-api` ile (Docker'sız, sadece oyun) test ederken
 `game/scripts/mock-api.mjs` artık `/api/speech/stt`'ye sabit bir örnek cümle,
 `/api/speech/tts`'e ise geçerli ama **sessiz** bir WAV döner — amaç ses
 kalitesini değil, mikrofon → metin → tur → ses oynatma akışının uçtan uca
@@ -201,6 +246,56 @@ docker compose up --build
 ```
 Yeni bir **tablo** eklenmesi bu sıfırlamayı gerektirmez, `create_all()` sadece eksik
 tabloları oluşturur.
+
+## Sık karşılaşılan hatalar
+
+### "Backend is unavailable at localhost:8000" / tarayıcıda CORS hatası, ama curl/DevTools CORS'un doğru olduğunu gösteriyor
+
+Bu proje geliştirilirken tam olarak bu senaryo yaşandı ve gerçek sebebi CORS
+**değildi**: `api` container'ının Postgres'i ilk kez ayağa kaldırdığı andaki
+`User` modeliyle, o andan sonra modele eklenen `password_hash` alanı
+arasında bir uyuşmazlık vardı — `Base.metadata.create_all()` **var olan**
+tabloları güncellemez (yalnızca eksik tabloları oluşturur, bkz. yukarıdaki
+"şema değişikliği" notu), yani eski bir `pgdata` volume'unda `users`
+tablosunda `password_hash` kolonu hiç yoktu. Bu da `/api/session/start`'ta
+gerçek bir SQL hatasıyla 500 dönmesine yol açıyordu:
+
+```
+psycopg2.errors.UndefinedColumn: column users.password_hash does not exist
+```
+
+Buradaki asıl kafa karıştırıcı kısım şu: bir route içinde `HTTPException`
+olmayan beklenmeyen bir hata patladığında, Starlette'in bunu yakalayan
+`ServerErrorMiddleware`'i `CORSMiddleware`'in **dışında** oturuyor — yani
+sonuçta dönen 500 cevabına CORS header'ları hiç eklenmiyor. Tarayıcı da
+gerçek 500'ü değil, "No 'Access-Control-Allow-Origin' header is present"
+şeklinde bir CORS hatası gösteriyor; halbuki CORS ayarının kendisi (bkz.
+`api/main.py`'deki `CORSMiddleware`) tamamen doğruydu — `curl` ve DevTools
+Network sekmesinde `OPTIONS` preflight'ının 200 dönmesi de bu yüzdendi. Bu
+sorunu iki katmanda çözdük:
+
+1. **Kalıcı kod düzeltmesi**: `api/main.py`'a global bir
+   `@app.exception_handler(Exception)` eklendi. Bu, beklenmeyen hataları
+   FastAPI'nin normal (CORS header'larını doğru ekleyen) hata işleme
+   katmanına sokuyor — böylece bundan sonra gerçekten alakasız bir 500 hatası
+   olsa bile tarayıcıda "CORS hatası" gibi görünüp saatlerce yanlış yöne
+   baktırmıyor, gerçek hata (`{"detail": "Internal server error"}`, log'da
+   tam traceback ile) görünüyor.
+2. **Bu spesifik durumun düzeltmesi**: modelin (`api/models/models.py`)
+   beklediği şemayla Postgres'teki gerçek tabloyu eşitlemek için volume'u
+   sıfırlayın:
+
+   ```bash
+   docker compose down -v
+   docker compose up --build
+   ```
+
+   (`-v` mevcut kullanıcı/leaderboard verisini siler — hackathon
+   geliştirme aşamasında sorun değil.)
+
+Kısacası: tarayıcı konsolunda CORS hatası görüp `curl`/DevTools'ta CORS
+header'larının doğru geldiğini de görüyorsanız, sorun büyük ihtimalle CORS
+değil — `docker compose logs -f api` ile asıl 500/exception'ı arayın.
 
 ## Paralel çalışma modeli
 
@@ -223,8 +318,8 @@ Postman/curl ile bağımsız test edebilir.
 | `GET /api/leaderboard/` | XP'ye göre ilk 10 kullanıcı |
 | `POST /api/vocabulary/submit` | `{user_id, location, concept, word}` — kelime/eş anlamlı eşleşirse ve daha önce kazanılmadıysa coin verir |
 | `GET /api/vocabulary/progress/{user_id}/{location}` | Kullanıcının o odadaki kelime ilerlemesi |
-| `POST /api/speech/stt` | `multipart/form-data`, alan adı `audio` (+ opsiyonel `language_code` query) — `ai` servisindeki gerçek Gemini STT'ye proxy, `{text, language_code, mode, model, latency_ms}` döner |
-| `POST /api/speech/tts` | `{text, voice?, style?}` — `ai` servisindeki gerçek Gemini TTS'e proxy, ham `audio/wav` bayt dizisi döner |
+| `POST /api/speech/stt` | `multipart/form-data`, alan adı `audio` (+ opsiyonel `language_code` query) — `ai` servisindeki aktif saglayiciya (Gemini veya Groq) proxy, `{text, language_code, mode, model, latency_ms}` döner |
+| `POST /api/speech/tts` | `{text, voice?, style?}` — `ai` servisindeki aktif saglayiciya (Gemini veya Groq) proxy, ham `audio/wav` bayt dizisi döner |
 
 ## Learning analytics tablolari
 
@@ -264,7 +359,7 @@ Postman/curl ile bağımsız test edebilir.
 **Bitti, test edildi:**
 - Docker/Compose (game + api + ai + db)
 - DB modelleri (User, GameSession, Dialogue, VocabularyProgress)
-- Gemini push-to-talk STT (`verbatim`) ve WAV TTS endpoint'leri
+- Push-to-talk STT (`verbatim`) ve WAV TTS endpoint'leri (Gemini + Groq)
 - Auth (basit username+şifre, hackathon MVP seviyesinde)
 - Session başlatma + turn akışı (kaydet → değerlendir → ödüllendir → senaryo kontrolü)
 - Ödül motoru, leaderboard, vocabulary sistemi
@@ -280,10 +375,21 @@ Postman/curl ile bağımsız test edebilir.
   bir base URL biliyor ve `ai/main.py`'a ayrıca CORS eklemek gerekmedi.
   `game/scripts/mock-api.mjs` de bu iki uca (sabit metin / sessiz WAV ile) destek
   verecek şekilde güncellendi.
+- `ai` servisindeki her AI çağrısı (evaluator, correction, extractor'lar, NPC
+  diyaloğu, STT, TTS) artık Gemini **veya** Groq ile çalışabiliyor
+  (`ai/modules/*.py` içindeki ortak `Protocol`'ler + `Groq*Provider`
+  sınıfları, seçim `ai/main.py > _active_ai_provider()`'da hangi API
+  anahtarının dolu olduğuna göre yapılıyor) — sağlayıcılardan biri kesinti
+  yaşarsa `.env`'de anahtar değiştirip yalnızca `ai` container'ını yeniden
+  başlatmak yeterli.
 
 **Bekleniyor / stretch goal:**
 - Streaming STT/TTS ve oyuncunun NPC konuşurken araya girebilmesi (şu an
   push-to-talk: kaydet → durdur → gönder, tek seferlik dosya tabanlı)
+- Gemini/Groq arasında istek bazlı otomatik failover (şu an ikisi de
+  yapılandırılmışsa yalnızca Gemini kullanılıyor; gerçek zamanlı geçiş için
+  her `get_*_provider()` fonksiyonuna bir try/except + ikinci sağlayıcıya
+  düşme mantığı eklenebilir)
 
 ## Sıradaki adımlar
 

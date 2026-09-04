@@ -5,6 +5,13 @@ from typing import Protocol
 
 from shared.schemas import CorrectionInput, CorrectionResult
 
+from .groq_client import (
+    DEFAULT_GROQ_MODEL,
+    build_groq_client,
+    groq_chat_json,
+    json_schema_instruction,
+)
+
 
 DEFAULT_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "correction.txt"
 
@@ -55,6 +62,36 @@ class GeminiCorrectionProvider:
         if not response.text:
             raise RuntimeError("Gemini returned an empty correction")
         return CorrectionResult.model_validate_json(response.text)
+
+
+class GroqCorrectionProvider:
+    """Groq (OpenAI-compatible chat-completions) adapter for the same task.
+
+    Same prompt file and output schema as `GeminiCorrectionProvider` - only
+    the transport and JSON-enforcement mechanism differ (see
+    `groq_client.groq_chat_json`).
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = DEFAULT_GROQ_MODEL,
+        prompt_path: Path = DEFAULT_PROMPT_PATH,
+    ):
+        self._client = build_groq_client(api_key)
+        self._model = model
+        self._system_instruction = prompt_path.read_text(
+            encoding="utf-8"
+        ) + json_schema_instruction(CorrectionResult.model_json_schema())
+
+    def correct(self, correction_input: CorrectionInput) -> CorrectionResult:
+        content = groq_chat_json(
+            self._client,
+            model=self._model,
+            system_instruction=self._system_instruction,
+            user_content=correction_input.model_dump_json(indent=2),
+        )
+        return CorrectionResult.model_validate_json(content)
 
 
 class CorrectionModule:

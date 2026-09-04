@@ -9,6 +9,13 @@ from shared.schemas import (
     PlausibilityEstimate,
 )
 
+from .groq_client import (
+    DEFAULT_GROQ_MODEL,
+    build_groq_client,
+    groq_chat_json,
+    json_schema_instruction,
+)
+
 
 DEFAULT_PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "evaluator.txt"
 
@@ -59,6 +66,34 @@ class GeminiPlausibilityEstimator:
         if not response.text:
             raise RuntimeError("Gemini returned an empty language evaluation")
         return PlausibilityEstimate.model_validate_json(response.text)
+
+
+class GroqPlausibilityEstimator:
+    """Groq (OpenAI-compatible chat-completions, JSON mode) plausibility estimator.
+
+    Same prompt and output schema as `GeminiPlausibilityEstimator`.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = DEFAULT_GROQ_MODEL,
+        prompt_path: Path = DEFAULT_PROMPT_PATH,
+    ):
+        self._client = build_groq_client(api_key)
+        self._model = model
+        self._system_instruction = prompt_path.read_text(
+            encoding="utf-8"
+        ) + json_schema_instruction(PlausibilityEstimate.model_json_schema())
+
+    def estimate(self, evaluation_input: LanguageEvaluationInput) -> PlausibilityEstimate:
+        content = groq_chat_json(
+            self._client,
+            model=self._model,
+            system_instruction=self._system_instruction,
+            user_content=evaluation_input.model_dump_json(indent=2),
+        )
+        return PlausibilityEstimate.model_validate_json(content)
 
 
 class LanguageEvaluator:

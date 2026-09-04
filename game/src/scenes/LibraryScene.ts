@@ -562,10 +562,12 @@ export class LibraryScene extends Phaser.Scene {
   }
 
   private renderTurnResult(result: TurnResponse): void {
-    this.appendMessage("LINA", result.npc_response, "npc");
-    if (!result.accepted && result.correction && result.correction !== result.npc_response) {
-      this.appendMessage("SUGGESTION", result.correction, "feedback");
-    }
+    const isCoach = result.response_speaker === "coach";
+    this.appendMessage(
+      isCoach ? "COACH" : "LINA",
+      result.npc_response,
+      isCoach ? "feedback" : "npc",
+    );
     if (result.rewards && (result.rewards.gained_xp > 0 || result.rewards.gained_coins > 0)) {
       this.appendMessage(
         "REWARD",

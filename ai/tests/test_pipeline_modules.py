@@ -5,7 +5,10 @@ from ai.modules.language_evaluator import LanguageEvaluator
 from ai.modules.npc import NpcModule
 from ai.modules.speech import TextSpeechModule
 from shared.schemas import (
+    CorrectionInput,
+    CorrectionResult,
     DialogueTurn,
+    EvaluateResponse,
     LanguageEvaluationInput,
     NPCIdentity,
     NPCTask,
@@ -40,6 +43,20 @@ class FailingTextGenerator:
         raise RuntimeError("API unavailable")
 
 
+class FakeCorrectionProvider:
+    def __init__(self):
+        self.received_input = None
+
+    def correct(self, correction_input):
+        self.received_input = correction_input
+        return CorrectionResult(
+            corrected_utterance="I went to school yesterday.",
+            coach_response=(
+                "Say: 'I went to school yesterday.' Use 'went' for the past."
+            ),
+        )
+
+
 def make_identity() -> NPCIdentity:
     return NPCIdentity(
         id="barista_01",
@@ -63,6 +80,17 @@ def make_evaluation_input() -> LanguageEvaluationInput:
 
 
 class PipelineModuleTests(unittest.TestCase):
+    def test_rejected_response_is_explicitly_spoken_by_coach(self):
+        result = EvaluateResponse(
+            accepted=False,
+            correction="Please try again.",
+            npc_response="Please try again.",
+            response_speaker="coach",
+        )
+
+        self.assertEqual(result.response_speaker, "coach")
+        self.assertEqual(DialogueTurn(speaker="coach", text="Try again").speaker, "coach")
+
     def test_speech_module_is_text_in_text_out(self):
         speech = TextSpeechModule()
         self.assertEqual(speech.speech_to_text("  hello world  "), "hello world")
@@ -89,11 +117,28 @@ class PipelineModuleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "between 0 and 100"):
             LanguageEvaluator(FakePlausibilityEstimator(50), threshold=101)
 
-    def test_correction_message(self):
-        self.assertEqual(
-            CorrectionModule().create_feedback("too short"),
-            "Please provide a more detailed response.",
+    def test_correction_receives_evaluator_history_and_latest_utterance(self):
+        provider = FakeCorrectionProvider()
+        correction = CorrectionModule(provider)
+        history = [DialogueTurn(speaker="npc", text="Where did you go yesterday?")]
+
+        result = correction.correct(
+            CorrectionInput(
+                utterance="I go to school yesterday.",
+                dialogue_history=history,
+            )
         )
+
+        self.assertEqual(
+            provider.received_input.model_dump(),
+            {
+                "utterance": "I go to school yesterday.",
+                "dialogue_history": [
+                    {"speaker": "npc", "text": "Where did you go yesterday?"}
+                ],
+            },
+        )
+        self.assertEqual(result.corrected_utterance, "I went to school yesterday.")
 
     def test_npc_saves_only_complete_successful_turn(self):
         generator = FakeTextGenerator()

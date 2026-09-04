@@ -6,11 +6,11 @@ haberdar olun, cunku her iki container da bu dosyayi kullaniyor.
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DialogueTurn(BaseModel):
-    speaker: Literal["user", "npc"]
+    speaker: Literal["user", "npc", "coach"]
     text: str
 
 
@@ -60,6 +60,20 @@ class LanguageEvaluationResult(PlausibilityEstimate):
     accepted: bool
 
 
+class CorrectionInput(BaseModel):
+    """Ayni evaluator history'si ve reddedilen son kullanici cumlesi."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    utterance: str
+    dialogue_history: list[DialogueTurn] = Field(default_factory=list)
+
+
+class CorrectionResult(BaseModel):
+    corrected_utterance: str
+    coach_response: str
+
+
 class GrammarFinding(BaseModel):
     topic_id: int = Field(ge=1, le=50)
     topic_name: str
@@ -77,6 +91,30 @@ class VocabularyFinding(BaseModel):
     issue: Optional[str] = None
 
 
+class VocabularyErrorFinding(BaseModel):
+    lemma: str
+    surface_form: str
+    part_of_speech: Literal[
+        "noun",
+        "verb",
+        "adjective",
+        "adverb",
+        "pronoun",
+        "preposition",
+        "conjunction",
+        "determiner",
+    ]
+    error_type: Literal[
+        "spelling",
+        "word_form",
+        "lexical_choice",
+        "sense",
+        "collocation",
+    ]
+    count: int = Field(default=1, ge=1)
+    issue: str
+
+
 class IdiomFinding(BaseModel):
     idiom: str
     normalized_idiom: str
@@ -85,21 +123,26 @@ class IdiomFinding(BaseModel):
 
 
 class ExtractionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     utterance: str
-    outcome: Literal["correct", "incorrect"]
-    context: str
-    speaker: str
-    listener: str
-    communicative_goals: list[str] = Field(default_factory=list)
-    dialogue_history: list[DialogueTurn] = Field(default_factory=list)
-    evaluation_reason: Optional[str] = None
 
 
-class ExtractionResult(BaseModel):
-    outcome: Literal["correct", "incorrect"]
+class CorrectExtractionResult(BaseModel):
+    outcome: Literal["correct"] = "correct"
     grammar: list[GrammarFinding] = Field(default_factory=list)
     vocabulary: list[VocabularyFinding] = Field(default_factory=list)
     idioms: list[IdiomFinding] = Field(default_factory=list)
+
+
+class IncorrectExtractionResult(BaseModel):
+    outcome: Literal["incorrect"] = "incorrect"
+    grammar: list[GrammarFinding] = Field(default_factory=list)
+    vocabulary: list[VocabularyErrorFinding] = Field(default_factory=list)
+    idioms: list[IdiomFinding] = Field(default_factory=list)
+
+
+ExtractionResult = CorrectExtractionResult | IncorrectExtractionResult
 
 
 class EvaluateRequest(BaseModel):
@@ -121,6 +164,7 @@ class EvaluateResponse(BaseModel):
     accepted: bool
     correction: Optional[str] = None
     npc_response: str
+    response_speaker: Literal["npc", "coach"]
     updated_scenario_state: dict = Field(default_factory=dict)
     probability_percent: Optional[float] = Field(default=None, ge=0, le=100)
     evaluation_reason: Optional[str] = None

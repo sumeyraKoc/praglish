@@ -44,7 +44,7 @@ class Dialogue(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("sessions.id"))
-    speaker = Column(String)  # "user" veya "npc"
+    speaker = Column(String)  # "user", "npc" veya "coach"; coach su an persist edilmez
     text = Column(String)
 
     # Language Evaluator'dan gelen sonuclar (sadece "user" satirlarinda dolu olur)
@@ -116,6 +116,22 @@ class VocabularyLevelStat(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     outcome = Column(String, nullable=False)
     cefr_level = Column(String, nullable=False)
+    count = Column(Integer, nullable=False, default=0)
+
+
+class VocabularyErrorTypeStat(Base):
+    __tablename__ = "vocabulary_error_type_stats"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "error_type",
+            name="uq_vocabulary_error_type_stat",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    error_type = Column(String, nullable=False)
     count = Column(Integer, nullable=False, default=0)
 
 

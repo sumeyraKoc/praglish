@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 from ai.modules import (
     CorrectionModule,
     CorrectExtractor,
-    GeminiExtractionProvider,
+    GeminiCorrectionProvider,
+    GeminiCorrectExtractionProvider,
+    GeminiIncorrectExtractionProvider,
     GeminiPlausibilityEstimator,
     GeminiTextGenerator,
     LanguageEvaluator,
@@ -15,6 +17,7 @@ from ai.modules import (
     TextSpeechModule,
 )
 from shared.schemas import (
+    CorrectionInput,
     ExtractionRequest,
     ExtractionResult,
     LanguageEvaluationInput,
@@ -44,14 +47,29 @@ def print_extraction(result: ExtractionResult) -> None:
     grammar = ", ".join(
         f"{item.topic_name}×{item.count}" for item in result.grammar
     ) or "none"
-    vocabulary_levels = Counter()
-    for item in result.vocabulary:
-        vocabulary_levels[item.cefr_level] += item.count
-    vocabulary = ", ".join(
-        f"{level}×{vocabulary_levels[level]}"
-        for level in ("A1", "A2", "B1", "B2", "C1", "C2")
-        if vocabulary_levels[level]
-    ) or "none"
+    vocabulary_counts = Counter()
+    if result.outcome == "correct":
+        for item in result.vocabulary:
+            vocabulary_counts[item.cefr_level] += item.count
+        vocabulary = ", ".join(
+            f"{level}×{vocabulary_counts[level]}"
+            for level in ("A1", "A2", "B1", "B2", "C1", "C2")
+            if vocabulary_counts[level]
+        ) or "none"
+    else:
+        for item in result.vocabulary:
+            vocabulary_counts[item.error_type] += item.count
+        vocabulary = ", ".join(
+            f"{error_type}×{vocabulary_counts[error_type]}"
+            for error_type in (
+                "spelling",
+                "word_form",
+                "lexical_choice",
+                "sense",
+                "collocation",
+            )
+            if vocabulary_counts[error_type]
+        ) or "none"
     idioms = ", ".join(
         f"{item.normalized_idiom}×{item.count}" for item in result.idioms
     ) or "none"
@@ -65,16 +83,24 @@ def run() -> None:
     load_dotenv()
 
     speech = TextSpeechModule()
-    correction = CorrectionModule()
     api_key = os.getenv("GEMINI_API_KEY", "")
     model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    correction = CorrectionModule(
+        GeminiCorrectionProvider(
+            api_key=api_key,
+            model=os.getenv("CORRECTION_MODEL", model),
+        )
+    )
     evaluator = LanguageEvaluator(
         estimator=GeminiPlausibilityEstimator(api_key=api_key, model=model),
         threshold=float(os.getenv("LANGUAGE_ACCEPTANCE_THRESHOLD", "90")),
     )
-    extraction_provider = GeminiExtractionProvider(api_key=api_key, model=model)
-    correct_extractor = CorrectExtractor(extraction_provider)
-    incorrect_extractor = IncorrectExtractor(extraction_provider)
+    correct_extractor = CorrectExtractor(
+        GeminiCorrectExtractionProvider(api_key=api_key, model=model)
+    )
+    incorrect_extractor = IncorrectExtractor(
+        GeminiIncorrectExtractionProvider(api_key=api_key, model=model)
+    )
     generator = GeminiTextGenerator(
         api_key=api_key,
         model=model,
@@ -110,20 +136,22 @@ def run() -> None:
 
         extraction_request = ExtractionRequest(
             utterance=transcript,
-            outcome="correct" if evaluation.accepted else "incorrect",
-            context=f"{npc.identity.location} role-play",
-            speaker=npc.identity.user_role,
-            listener=npc.identity.role,
-            communicative_goals=[task.description for task in npc.identity.tasks],
-            dialogue_history=npc.dialogue_history,
-            evaluation_reason=evaluation.brief_reason,
         )
         extractor = correct_extractor if evaluation.accepted else incorrect_extractor
         print_extraction(extractor.extract(extraction_request))
 
         if not evaluation.accepted:
-            feedback = correction.create_feedback(transcript)
-            print(f"Coach: {speech.text_to_speech(feedback)}")
+            correction_result = correction.correct(
+                CorrectionInput(
+                    utterance=transcript,
+                    dialogue_history=npc.dialogue_history,
+                )
+            )
+            print(f"Corrected: {correction_result.corrected_utterance}")
+            print(
+                "Coach: "
+                f"{speech.text_to_speech(correction_result.coach_response)}"
+            )
             continue
 
         npc_reply = npc.respond(transcript)

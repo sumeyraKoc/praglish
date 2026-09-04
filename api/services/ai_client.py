@@ -1,12 +1,15 @@
 import os
+from typing import Literal
 
 import httpx
 
 from shared.schemas import (
+    CorrectExtractionResult,
     EvaluateRequest,
     EvaluateResponse,
     ExtractionRequest,
     ExtractionResult,
+    IncorrectExtractionResult,
     STTResponse,
     TTSRequest,
 )
@@ -30,6 +33,7 @@ MOCK_RESPONSES: dict[str, EvaluateResponse] = {
         accepted=False,
         correction="Could I get a croissant, please?",
         npc_response="Sure... do you mean 'Could I get a croissant, please?'",
+        response_speaker="coach",
         updated_scenario_state={},
     ),
     "library": EvaluateResponse(
@@ -39,6 +43,7 @@ MOCK_RESPONSES: dict[str, EvaluateResponse] = {
             "Of course. Try saying, "
             "'Could you help me find a mystery novel, please?'"
         ),
+        response_speaker="coach",
         updated_scenario_state={},
     ),
 }
@@ -64,6 +69,7 @@ async def evaluate_and_respond(payload: EvaluateRequest) -> EvaluateResponse:
                     f"[mock] '{payload.location}' icin henuz bir mock cevap "
                     "tanimlanmadi - api/services/ai_client.py > MOCK_RESPONSES'a ekleyin."
                 ),
+                response_speaker="coach",
                 updated_scenario_state=payload.scenario_state,
             )
         return template.model_copy(update={"updated_scenario_state": payload.scenario_state})
@@ -77,7 +83,10 @@ async def evaluate_and_respond(payload: EvaluateRequest) -> EvaluateResponse:
         return EvaluateResponse(**response.json())
 
 
-async def extract_utterance(payload: ExtractionRequest) -> ExtractionResult | None:
+async def extract_utterance(
+    payload: ExtractionRequest,
+    outcome: Literal["correct", "incorrect"],
+) -> ExtractionResult | None:
     """Return None in mock mode so fake evaluations do not pollute analytics."""
 
     if USE_MOCK_AI:
@@ -85,11 +94,16 @@ async def extract_utterance(payload: ExtractionRequest) -> ExtractionResult | No
 
     async with httpx.AsyncClient(timeout=AI_EXTRACTION_TIMEOUT_SECONDS) as client:
         response = await client.post(
-            f"{AI_SERVICE_URL}/extract",
+            f"{AI_SERVICE_URL}/extract/{outcome}",
             json=payload.model_dump(),
         )
         response.raise_for_status()
-        return ExtractionResult(**response.json())
+        result_type = (
+            CorrectExtractionResult
+            if outcome == "correct"
+            else IncorrectExtractionResult
+        )
+        return result_type(**response.json())
 
 
 async def transcribe_audio(

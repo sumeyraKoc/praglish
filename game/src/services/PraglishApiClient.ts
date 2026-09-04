@@ -24,6 +24,7 @@ export interface TurnResponse {
   accepted: boolean;
   correction: string | null;
   npc_response: string;
+  response_speaker: "npc" | "coach";
   probability_percent: number | null;
   evaluation_reason: string | null;
   rewards: RewardInfo | null;

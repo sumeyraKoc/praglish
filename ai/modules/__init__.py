@@ -1,9 +1,10 @@
 """English World AI pipeline modules."""
 
-from .correction import CorrectionModule
+from .correction import CorrectionModule, GeminiCorrectionProvider
 from .extractor import (
     CorrectExtractor,
-    GeminiExtractionProvider,
+    GeminiCorrectExtractionProvider,
+    GeminiIncorrectExtractionProvider,
     IncorrectExtractor,
 )
 from .language_evaluator import GeminiPlausibilityEstimator, LanguageEvaluator
@@ -18,8 +19,10 @@ from .speech import (
 
 __all__ = [
     "CorrectionModule",
+    "GeminiCorrectionProvider",
     "CorrectExtractor",
-    "GeminiExtractionProvider",
+    "GeminiCorrectExtractionProvider",
+    "GeminiIncorrectExtractionProvider",
     "GeminiTextGenerator",
     "GeminiPlausibilityEstimator",
     "GeminiSpeechToTextProvider",

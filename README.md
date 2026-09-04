@@ -90,10 +90,47 @@ Her cumle evaluator kararindan sonra iki extractor'dan birine gider:
 - `IncorrectExtractor`: yalnizca somut hata bulunan gramer, vocabulary ve idiom
   kategorilerini cikarir.
 
-AI servisindeki `POST /extract` endpoint'i yapilandirilmis sonucu dondurur. API
-servisi bu sonucu PostgreSQL'deki ham event tablosuna ve ayri
+AI servisinde iki tamamen ayri extractor endpoint'i vardir:
+
+- `POST /extract/correct` yalnizca `ai/prompts/correct_extractor.txt` prompt'unu,
+- `POST /extract/incorrect` yalnizca `ai/prompts/incorrect_extractor.txt` prompt'unu kullanir.
+
+Her ikisinin de request body'si yalnizca o anki cumledir:
+
+```json
+{"utterance": "Could I get a coffee, please?"}
+```
+
+Context, rol, hedef, konusma gecmisi ve evaluator aciklamasi extractor'a
+gonderilmez. API servisi yapilandirilmis sonucu PostgreSQL'deki ham event tablosuna ve ayri
 `correct`/`incorrect` sayaclarina atomik olarak kaydeder. Ayni `dialogue_id`
 tekrar islenirse sayaclar ikinci kez artmaz.
+
+### Correction coach
+
+Evaluator bir cumleyi reddettiginde correction modulu Gemini'ye yalnizca reddedilen
+son cumleyi ve evaluator'a verilen filtrelenmis dialogue history'yi gonderir. Cikti,
+duzeltilmis cumle ile kisa bir coach aciklamasini ayri alanlarda tasir. Bu akis
+`python -m ai.cli` icinde otomatik calisir. Modulu AI servisi uzerinden bagimsiz
+denemek icin:
+
+```powershell
+$body = @{
+  utterance = "I go to school yesterday."
+  dialogue_history = @(
+    @{ speaker = "npc"; text = "Where did you go yesterday?" }
+  )
+} | ConvertTo-Json -Depth 4
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://127.0.0.1:8001/correct" `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+Oyunda reddedilen bir cumlede ayni koc mesaji, NPC adiyla degil `COACH`
+etiketiyle gosterilir. Incorrect cumle ve coach mesaji dialogue history'ye
+kaydedilmez.
 
 ### STT/TTS ilk denemesi
 
@@ -181,7 +218,7 @@ Postman/curl ile bağımsız test edebilir.
 | Endpoint | Açıklama |
 |---|---|
 | `POST /api/session/start` | `{username, password, location, npc_role}` — kayıt/giriş + yeni oyun oturumu başlatır, `scenario_state`'i `game_data/scenarios/{location}.json`'dan yükler |
-| `POST /api/session/{session_id}/turn` | `{user_text}` — kullanıcının cümlesini kaydeder, `ai` servisine değerlendirtir, ödül verir, senaryo tamamlandıysa bonus + session kilitleme yapar |
+| `POST /api/session/{session_id}/turn` | `{user_text}` — cümleyi değerlendirir; tüm gerçek NPC mesajlarını ve yalnızca kabul edilen kullanıcı mesajlarını kaydeder, reddedilen turda cevabı kaydedilmeyen `coach` verir |
 | `GET /api/user/{user_id}` | Kullanıcının coin/xp bilgisi |
 | `GET /api/leaderboard/` | XP'ye göre ilk 10 kullanıcı |
 | `POST /api/vocabulary/submit` | `{user_id, location, concept, word}` — kelime/eş anlamlı eşleşirse ve daha önce kazanılmadıysa coin verir |
@@ -191,9 +228,12 @@ Postman/curl ile bağımsız test edebilir.
 
 ## Learning analytics tablolari
 
-- `learning_extraction_events` — cumle bazli ham extractor sonucu
+- `learning_extraction_events` — kabul edilen cumleler icin ham extractor sonucu;
+  reddedilen cumlenin metni kaydedilmez, yalnizca aggregate hata sayaclari artar
 - `grammar_usage_stats` — kullanici + correct/incorrect + 1–50 konu sayaci
-- `vocabulary_level_stats` — kullanici + correct/incorrect + A1–C2 sayaci
+- `vocabulary_level_stats` — yalnizca dogru kullanimlar icin kullanici + A1–C2 sayaci
+- `vocabulary_error_type_stats` — yanlis kullanimlar icin kullanici + spelling,
+  word_form, lexical_choice, sense veya collocation sayaci
 - `idiom_usage_stats` — normalize idiom basina ilk/son kullanim ve tekrar sayaci
 
 ## Statik oyun verisi (`api/game_data/`)

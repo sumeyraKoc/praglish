@@ -84,6 +84,7 @@ const server = http.createServer((request, response) => {
         accepted: true,
         correction: null,
         npc_response: `Nice to meet you! You said: "${parsed.user_text}" What would you like from the bakery?`,
+        response_speaker: "npc",
         updated_scenario_state: { item: null, quantity: null },
         probability_percent: 92,
         evaluation_reason: "Natural and understandable",

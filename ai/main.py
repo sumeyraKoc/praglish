@@ -9,7 +9,9 @@ from dotenv import load_dotenv
 from modules import (
     CorrectionModule,
     CorrectExtractor,
-    GeminiExtractionProvider,
+    GeminiCorrectionProvider,
+    GeminiCorrectExtractionProvider,
+    GeminiIncorrectExtractionProvider,
     GeminiPlausibilityEstimator,
     GeminiSpeechToTextProvider,
     GeminiTextToSpeechProvider,
@@ -20,10 +22,13 @@ from modules import (
 )
 
 from shared.schemas import (
+    CorrectionInput,
+    CorrectionResult,
+    CorrectExtractionResult,
     EvaluateRequest,
     EvaluateResponse,
     ExtractionRequest,
-    ExtractionResult,
+    IncorrectExtractionResult,
     LanguageEvaluationInput,
     NPCIdentity,
     NPCTask,
@@ -53,8 +58,16 @@ def health():
 
 
 @lru_cache
-def get_extraction_provider() -> GeminiExtractionProvider:
-    return GeminiExtractionProvider(
+def get_correct_extraction_provider() -> GeminiCorrectExtractionProvider:
+    return GeminiCorrectExtractionProvider(
+        api_key=os.getenv("GEMINI_API_KEY", ""),
+        model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+    )
+
+
+@lru_cache
+def get_incorrect_extraction_provider() -> GeminiIncorrectExtractionProvider:
+    return GeminiIncorrectExtractionProvider(
         api_key=os.getenv("GEMINI_API_KEY", ""),
         model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
     )
@@ -68,6 +81,19 @@ def get_language_evaluator() -> LanguageEvaluator:
             model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
         ),
         threshold=float(os.getenv("LANGUAGE_ACCEPTANCE_THRESHOLD", "90")),
+    )
+
+
+@lru_cache
+def get_correction_module() -> CorrectionModule:
+    return CorrectionModule(
+        GeminiCorrectionProvider(
+            api_key=os.getenv("GEMINI_API_KEY", ""),
+            model=os.getenv(
+                "CORRECTION_MODEL",
+                os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+            ),
+        )
     )
 
 
@@ -95,15 +121,19 @@ def get_tts_provider() -> GeminiTextToSpeechProvider:
     )
 
 
-@app.post("/extract", response_model=ExtractionResult)
-def extract_language_features(payload: ExtractionRequest):
-    provider = get_extraction_provider()
-    extractor = (
-        CorrectExtractor(provider)
-        if payload.outcome == "correct"
-        else IncorrectExtractor(provider)
-    )
-    return extractor.extract(payload)
+@app.post("/extract/correct", response_model=CorrectExtractionResult)
+def extract_correct_language_features(payload: ExtractionRequest):
+    return CorrectExtractor(get_correct_extraction_provider()).extract(payload)
+
+
+@app.post("/extract/incorrect", response_model=IncorrectExtractionResult)
+def extract_incorrect_language_features(payload: ExtractionRequest):
+    return IncorrectExtractor(get_incorrect_extraction_provider()).extract(payload)
+
+
+@app.post("/correct", response_model=CorrectionResult)
+def correct_language(payload: CorrectionInput):
+    return get_correction_module().correct(payload)
 
 
 @app.post("/evaluate-and-respond", response_model=EvaluateResponse)
@@ -130,11 +160,17 @@ def evaluate_and_respond(payload: EvaluateRequest):
     )
 
     if not evaluation.accepted:
-        feedback = CorrectionModule().create_feedback(payload.user_text)
+        correction = get_correction_module().correct(
+            CorrectionInput(
+                utterance=payload.user_text,
+                dialogue_history=history,
+            )
+        )
         return EvaluateResponse(
             accepted=False,
-            correction=feedback,
-            npc_response=feedback,
+            correction=correction.corrected_utterance,
+            npc_response=correction.coach_response,
+            response_speaker="coach",
             updated_scenario_state=payload.scenario_state,
             probability_percent=evaluation.probability_percent,
             evaluation_reason=evaluation.brief_reason,
@@ -167,6 +203,7 @@ def evaluate_and_respond(payload: EvaluateRequest):
         accepted=True,
         correction=None,
         npc_response=npc_reply,
+        response_speaker="npc",
         updated_scenario_state=payload.scenario_state,
         probability_percent=evaluation.probability_percent,
         evaluation_reason=evaluation.brief_reason,

@@ -29,18 +29,14 @@ const FURNITURE_LAYERS = new Set([
 const WALL_LAYERS = new Set(["köşe", "Duvar"]);
 
 const PILLAR_ALIGNMENT_X = -12.5;
-const CHECKOUT_FORWARD_Y = 10;
 const CASHIER_ALIGNMENT_X = 15;
 const CASHIER_ALIGNMENT_Y = 30;
 
-const COUNTER_ASSETS = new Set([
-  "counter",
-  "bakery-counter",
-  "display-counter",
-  "cake-case-full",
-  "cake-case",
-  "cash-register",
-]);
+
+// Iki dolap gorsel olarak bitisik/birlesik tek bir tezgah gibi durmasi
+// gerekirken aralarindaki (haritada tile bulunmayan) hucre bloklu degildi -
+// oyuncu gorsel olarak dolu gorunen bu tezgahin ortasindan yuruyebiliyordu.
+const CAKE_CASE_GAP_GRID = { x: 3, y: 2 };
 
 const INTERACT_RANGE = 1.5;
 
@@ -116,6 +112,11 @@ export class RoomScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor("#181525");
     this.createAnimations();
     this.renderMap(this.cache.json.get(MAP_KEY) as BakeryMapData);
+    // Iki pasta dolabi gorsel olarak bitisik tek bir tezgah gibi durmasi
+    // gerekirken haritada aralarindaki hucreye hic tile konulmamis, yani
+    // otomatik olarak bloklanmiyordu - oyuncu "dolu" gorunen tezgahin tam
+    // ortasindan yuruyebiliyordu (bkz. SECOND_CAKE_CASE_GAP_FIX_X yorumu).
+    this.blockedTiles.add(`${CAKE_CASE_GAP_GRID.x},${CAKE_CASE_GAP_GRID.y}`);
 
     this.avatar = new IsoAvatar(this, { x: 4, y: 4, z: 0 }, {
       textureKey: "player",
@@ -229,18 +230,24 @@ export class RoomScene extends Phaser.Scene {
       const screen = gridToScreen({ x: gridX, y: gridY, z: 0 }, ISO_CONFIG);
       const layerOffsetX = layer.offsetx ?? 0;
       const layerOffsetY = layer.offsety ?? 0;
-      const assetOffsetX = asset.key === "pillar" ? PILLAR_ALIGNMENT_X : 0;
-      const assetOffsetY = asset.key === "cash-register" || asset.key === "footmat"
-        ? CHECKOUT_FORWARD_Y
+      const assetOffsetX = asset.key === "pillar" 
+        ? PILLAR_ALIGNMENT_X 
         : 0;
+      // Eskiden burada kasa/paspas icin ekstra +10 "one cek" (CHECKOUT_FORWARD_Y)
+      // vardi - Firin_Haritasi.tmj/tmx'te boyle bir ofset yok, sadece bizim
+      // kodumuzda vardi. Bu, kasanin GORSEL olarak kendi grid hucresinden
+      // (collision hala o hucrede kaliyor) asagi/one kaymasina, yani "kasa one
+      // gecmis" gorunumune VE kasanin asil hucresinin - artik gorsel olarak bos
+      // kalan yerin - hala blockedTiles'ta engelli gorunmesine yol aciyordu.
+      // Kaldirinca kasa, haritanin kendi (mobilya5 katmani) offsetiyle ayni
+      // hucrede hem gorunur hem collision'a sahip oluyor.
       const isFloor = layer.name === "Zemin" || layer.name === "zemin2";
       const sprite = this.add.image(
         screen.x + layerOffsetX + assetOffsetX,
-        screen.y + layerOffsetY + assetOffsetY + (isFloor ? 0 : TILE_SIZE / 2),
+        screen.y + layerOffsetY + (isFloor ? 0 : TILE_SIZE / 2),
         asset.key,
       );
       sprite.setOrigin(0.5, isFloor ? 0.5 : 1);
-      if (COUNTER_ASSETS.has(asset.key)) sprite.setScale(0.84);
       sprite.setFlipX((rawGid & 0x80000000) !== 0);
       sprite.setDepth(
         isFloor
@@ -250,7 +257,19 @@ export class RoomScene extends Phaser.Scene {
             : calculateDepth({ x: gridX, y: gridY, z: 0 }) + 20,
       );
 
-      if (FURNITURE_LAYERS.has(layer.name)) this.blockedTiles.add(`${gridX},${gridY}`);
+      // ONEMLI DUZELTME: WALL_LAYERS ("köşe", "Duvar") sadece depth (cizim sirasi)
+      // icin kullaniliyordu, blockedTiles'a HIC eklenmiyordu - yani duvar
+      // tile'lari gorsel olarak duvar gibi gozukse de collision'a sahip degildi.
+      // Bu, "dolap ile kasa arasinda bosluk var, oradan yuruyor" seklinde
+      // bildirilen hatanin gercek nedeni: sol duvar (köşe katmani, x=0) uzerinde
+      // tall-shelf (0,0) ve bread-shelf (0,2) mobilyalari FURNITURE_LAYERS
+      // oldugu icin blokluydu, ama aralarindaki (0,1) hucresi SADECE duvar
+      // tile'i icerdigi icin (mobilya yok) bloksuz kalmisti - oyuncu "dolap"
+      // (raf) ile arka duvar arasindaki bu tek hucrelik bosluktan gecebiliyordu.
+      // Ayni sorun sag ust arka duvar (Duvar katmani, y=0) icin de gecerliydi.
+      if (FURNITURE_LAYERS.has(layer.name)) {
+        this.blockedTiles.add(`${gridX},${gridY}`);
+      }
 
       this.registerInteractable(asset.key, gridX, gridY);
     });
@@ -339,7 +358,7 @@ export class RoomScene extends Phaser.Scene {
       backgroundColor: "#33264f",
       padding: { x: 8, y: 4 },
     }).setOrigin(0.5).setDepth(99999);
-    this.blockedTiles.add(`${this.npcCollisionGrid.x},${this.npcCollisionGrid.y}`);
+    //this.blockedTiles.add(`${this.npcCollisionGrid.x},${this.npcCollisionGrid.y}`);
   }
 
   private createUi(): void {

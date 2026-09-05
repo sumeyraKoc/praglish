@@ -21,11 +21,20 @@ const NAV_SUBDIVISIONS = 4;
 // Yanim yana duran mobilyalarin collider'lari hafifce ust uste gelir;
 // boylece karakter masa ve raf parcalarinin arasindaki yapay bosluga giremez.
 const FURNITURE_COLLISION_RADIUS = 0.52;
+// originX/originY, Sample.tmj'deki gercek tile araligina (Floor/Walls/mobilyalar
+// katmanlari MAP_OFFSET sonrasi x: 0..11, y: 0..15) gore hesaplandi: eskiden
+// (650, 100) idi ve bu, odayi 1280x720 canvas'ta soldan (~64px) ve yukaridan
+// kirpiliyordu - en arkadaki duvar sirasi (grid 0,0) ekranin en ustunden
+// tasip "PRAGLISH LIBRARY" basligiyla cakisiyor, oda da canvas merkezine gore
+// sola kayik duruyordu (bu yuzden oyun ici goruntu, referans/onizleme
+// gorsellerindeki gibi kareyi doldurmuyordu). Yeni degerler odayi yatayda tam
+// ortalar ve en ust duvarin canvas'in ustunden tasmasini onler; alttaki bosluk
+// bilerek koruniyor - konusma paneli (640, 590) acildiginda o alana oturuyor.
 const ISO_CONFIG: IsoConfig = {
   tileWidth: TILE_SIZE,
   tileHeight: TILE_SIZE / 2,
-  originX: 650,
-  originY: 100,
+  originX: 705,
+  originY: 205,
 };
 
 const LIBRARIAN_GRID = { x: 8, y: 3, z: 0 };

@@ -85,6 +85,30 @@ services:
       - ./game/public:/app/public
       - ./game/index.html:/app/index.html
 
+  # Ayni WiFi/LAN DISINDAKI biriyle test icin (orn. mikrofon HTTPS istiyor,
+  # bkz. README "Farkli cihazdan test") - ngrok'u Windows'a AYRICA kurmaya
+  # gerek yok, resmi ngrok imajini bu compose agina baska bir servis olarak
+  # ekliyoruz. "game"/"api" servislerine localhost degil, docker'in kendi
+  # DNS'i ile servis ADIYLA ulasiyor (bkz. ngrok.yml). NGROK_AUTHTOKEN bos
+  # ise bu servis calismaz ama diger servisleri etkilemez.
+  ngrok:
+    image: ngrok/ngrok:alpine
+    restart: unless-stopped
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN:-}
+      - NGROK_CONFIG=/etc/ngrok.yml
+    volumes:
+      - ./ngrok.yml:/etc/ngrok.yml
+    command: start --all
+    ports:
+      # ngrok'un kendi web arayuzu - tarayicidan http://localhost:4040 ile
+      # acilan iki genel (public) https://...ngrok-free.app adresini buradan
+      # gorebilirsin (terminal/log kazmaya gerek yok).
+      - "4040:4040"
+    depends_on:
+      - game
+      - api
+
 volumes:
   pgdata:
   whisper_cache:

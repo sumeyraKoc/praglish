@@ -3,26 +3,33 @@
 # kisiyle test edebilmek icin. LAN IP + HTTP yaklasimi mikrofon icin
 # yetersiz kaliyor cunku tarayicilar navigator.mediaDevices.getUserMedia'yi
 # sadece HTTPS (ya da tam olarak localhost) uzerinde acar - bkz. README
-# "Farkli cihazdan test". ngrok, bilgisayarinda calisan docker compose'a
-# gecici birer HTTPS adresi veriyor (Netlify gibi kalici bir hosting DEGIL -
-# bilgisayarin + docker compose + ngrok surecinin acik kalmasi gerekir).
+# "Farkli cihazdan test".
 #
-# Iki tunel ayni anda gerekiyor cunku oyun (5173) ve API (8000) tarayici
+# Bu dosya docker-compose.yml'deki "ngrok" servisi tarafindan kullanilir -
+# yani ngrok'u Windows'a AYRICA KURMANA GEREK YOK, sadece
+# "docker compose up -d" yeterli. Bu yuzden asagidaki "addr" degerleri
+# localhost degil, compose agindaki SERVIS ADLARI (game/api) - ngrok
+# container'i o servislere kendi container'inin icinden, docker'in kendi
+# DNS'iyle ulasiyor.
+#
+# Iki tunel ayni anda gerekiyor cunku oyun (game) ve API (api) tarayici
 # acisindan FARKLI adresler olacak (game/index.html'deki ?api=... parametresi
 # tam olarak bunun icin eklendi).
 #
-# ONEMLI: buraya authtoken YAZMA. Once "ngrok config add-authtoken <TOKEN>"
-# komutunu calistir (bkz. asagidaki adimlar) - o token ngrok'un kendi genel
-# ayar dosyasina kaydedilir, bu proje dosyasina degil.
+# Authtoken buraya YAZILMIYOR - docker-compose.yml "ngrok" servisi onu
+# NGROK_AUTHTOKEN ortam degiskeninden okuyor, o da senin .env dosyandan
+# geliyor (bkz. .env.example). Boylece token bu dosyada / repoda gorunmez.
 #
-# Kullanim (repo kök dizininde, docker compose zaten calisirken):
-#   ngrok start --all --config=ngrok.yml
-#
+# Kullanim: docker compose up -d, sonra tarayicidan http://localhost:4040
+# ac - orada iki tane https://xxxx.ngrok-free.app adresi gorursun (biri
+# game, biri api icin). NOT: ucretsiz ngrok hesabinda bu adresler HER
+# "docker compose up" ile YENIDEN rastgele olusur - sabit bir adres
+# istersen ngrok'un ucretli planina gecmen gerekir.
 version: "3"
 tunnels:
   game:
     proto: http
-    addr: 5173
+    addr: game:5173
   api:
     proto: http
-    addr: 8000
+    addr: api:8000

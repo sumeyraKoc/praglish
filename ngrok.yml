@@ -1,0 +1,28 @@
+# ngrok config - "Sahneyi Seslendir" ozelligini ayni WiFi'da OLMAYAN
+# (orn. farkli sehirdeki bir arkadas, ya da mobil veriyle telefon) bir
+# kisiyle test edebilmek icin. LAN IP + HTTP yaklasimi mikrofon icin
+# yetersiz kaliyor cunku tarayicilar navigator.mediaDevices.getUserMedia'yi
+# sadece HTTPS (ya da tam olarak localhost) uzerinde acar - bkz. README
+# "Farkli cihazdan test". ngrok, bilgisayarinda calisan docker compose'a
+# gecici birer HTTPS adresi veriyor (Netlify gibi kalici bir hosting DEGIL -
+# bilgisayarin + docker compose + ngrok surecinin acik kalmasi gerekir).
+#
+# Iki tunel ayni anda gerekiyor cunku oyun (5173) ve API (8000) tarayici
+# acisindan FARKLI adresler olacak (game/index.html'deki ?api=... parametresi
+# tam olarak bunun icin eklendi).
+#
+# ONEMLI: buraya authtoken YAZMA. Once "ngrok config add-authtoken <TOKEN>"
+# komutunu calistir (bkz. asagidaki adimlar) - o token ngrok'un kendi genel
+# ayar dosyasina kaydedilir, bu proje dosyasina degil.
+#
+# Kullanim (repo kök dizininde, docker compose zaten calisirken):
+#   ngrok start --all --config=ngrok.yml
+#
+version: "3"
+tunnels:
+  game:
+    proto: http
+    addr: 5173
+  api:
+    proto: http
+    addr: 8000

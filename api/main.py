@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from core.database import Base, engine
 from models import models  # noqa: F401 - Base.metadata'ya tablolari kaydettirmek icin import sart
-from routes import leaderboard, session, speech, turn, user, vocabulary
+from routes import dub, leaderboard, session, speech, turn, user, vocabulary
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -62,6 +62,7 @@ app.include_router(user.router, prefix="/api/user", tags=["user"])
 app.include_router(leaderboard.router, prefix="/api/leaderboard", tags=["leaderboard"])
 app.include_router(vocabulary.router, prefix="/api/vocabulary", tags=["vocabulary"])
 app.include_router(speech.router, prefix="/api/speech", tags=["speech"])
+app.include_router(dub.router, prefix="/api/dub", tags=["dub"])
 
 
 @app.on_event("startup")

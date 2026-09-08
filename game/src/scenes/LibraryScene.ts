@@ -152,6 +152,10 @@ export class LibraryScene extends Phaser.Scene {
       if (isTextEntryEvent(event)) return;
       if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("StudioScene");
     });
+    this.input.keyboard?.on("keydown-M", (event: KeyboardEvent) => {
+      if (isTextEntryEvent(event)) return;
+      if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("MenuScene");
+    });
   }
 
   update(): void {

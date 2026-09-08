@@ -127,9 +127,9 @@ export class DubScene extends Phaser.Scene {
     this.panel = null;
   }
 
-  private exitToLibrary(): void {
+  private exitToMenu(): void {
     this.teardown();
-    this.scene.start("LibraryScene");
+    this.scene.start("MenuScene");
   }
 
   private setStatus(text: string, isError = false): void {
@@ -145,7 +145,7 @@ export class DubScene extends Phaser.Scene {
     const node = dom.node as HTMLElement;
     this.statusEl = node.querySelector('[data-role="status"]');
     const closeBtn = node.querySelector('[data-action="exit"]');
-    closeBtn?.addEventListener("click", () => this.exitToLibrary());
+    closeBtn?.addEventListener("click", () => this.exitToMenu());
     return node;
   }
 

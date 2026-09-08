@@ -3,6 +3,7 @@ import { RoomScene } from "./scenes/RoomScene";
 import { LibraryScene } from "./scenes/LibraryScene";
 import { DubScene } from "./scenes/DubScene";
 import { StudioScene } from "./scenes/StudioScene";
+import { MenuScene } from "./scenes/MenuScene";
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -19,9 +20,12 @@ new Phaser.Game({
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  // DubScene listede olsa da otomatik BASLAMAZ (Phaser sadece dizideki ilk
-  // sahneyi - LibraryScene'i - otomatik baslatir); StudioScene'e girisin
-  // (LibraryScene/RoomScene'den "S" tusu, bkz. DomInputGuard.ts) ici, oradan
-  // da "Sahneyi Seslendir" butonuyla DubScene'e geciliyor.
-  scene: [LibraryScene, RoomScene, StudioScene, DubScene],
+  // Diger sahneler listede olsa da otomatik BASLAMAZ (Phaser sadece
+  // dizideki ilk sahneyi - artik MenuScene'i - otomatik baslatir). Login/
+  // signup akisi henuz yok; oyun su an dogrudan mod secim menusunden
+  // basliyor. Menudeki "Oyna" butonlari LibraryScene/DubScene'i acar;
+  // StudioScene'e eski yoldan da girilebilir (LibraryScene/RoomScene'den
+  // "S" tusu, bkz. DomInputGuard.ts). Her sahneden "M" tusuyla menuye
+  // donulebilir.
+  scene: [MenuScene, LibraryScene, RoomScene, StudioScene, DubScene],
 });

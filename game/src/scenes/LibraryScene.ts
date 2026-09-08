@@ -3,6 +3,7 @@ import { calculateDepth } from "../engine/DepthSort";
 import { gridToScreen, IsoConfig, screenToGrid } from "../engine/IsometricMath";
 import { findPath, PathfindingGrid } from "../engine/PathFinder";
 import { IsoAvatar } from "../entities/IsoAvatar";
+import { isTextEntryEvent } from "../engine/DomInputGuard";
 import {
   PraglishApiClient,
   TurnResponse,
@@ -132,13 +133,24 @@ export class LibraryScene extends Phaser.Scene {
         this.handleClickToWalk(pointer.worldX, pointer.worldY);
       }
     });
-    this.input.keyboard?.on("keydown-E", () => this.handleInteractKey());
-    this.input.keyboard?.on("keydown-ESC", () => {
+    // isTextEntryEvent guard'i: bir DOM input'u (orn. dublaj karakter secim
+    // ekranindaki script <select>'i ya da diyalog/kelime input'lari) odaktayken
+    // yazilan harflerin bu oyun kisayollarini tetiklemesini engeller.
+    this.input.keyboard?.on("keydown-E", (event: KeyboardEvent) => {
+      if (!isTextEntryEvent(event)) this.handleInteractKey();
+    });
+    this.input.keyboard?.on("keydown-ESC", (event: KeyboardEvent) => {
+      if (isTextEntryEvent(event)) return;
       this.closeDialogue();
       this.closeVocabPanel();
     });
-    this.input.keyboard?.on("keydown-B", () => {
+    this.input.keyboard?.on("keydown-B", (event: KeyboardEvent) => {
+      if (isTextEntryEvent(event)) return;
       if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("RoomScene");
+    });
+    this.input.keyboard?.on("keydown-S", (event: KeyboardEvent) => {
+      if (isTextEntryEvent(event)) return;
+      if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("StudioScene");
     });
   }
 

@@ -131,26 +131,24 @@
     .dub-summary-line strong { color: #78dce8; }
     .dialogue-status.dub-status-error { color: #ff8e8e; }
 
-    #dub-launcher {
-      position: fixed;
-      top: 14px;
-      right: 14px;
-      z-index: 10;
-      height: 36px;
-      padding: 0 14px;
+    /* StudioScene icindeki (Phaser DOM elemani) giris butonu - artik
+       oyunun disina tasan sabit bir kose butonu degil, RoomScene/LibraryScene
+       'den "S" tusuyla girilen kendi sahnesinin ici. */
+    .dub-launcher {
+      height: 48px;
+      padding: 0 24px;
       border: 2px solid #78dce8;
       border-radius: 8px;
       background: rgba(33, 24, 47, 0.92);
       color: #78dce8;
-      font: 700 13px Arial, sans-serif;
+      font: 700 16px Arial, sans-serif;
       cursor: pointer;
     }
-    #dub-launcher:hover { background: #78dce8; color: #0f0c17; }
+    .dub-launcher:hover { background: #78dce8; color: #0f0c17; }
   </style>
 </head>
 <body>
   <div id="game"></div>
-  <button type="button" id="dub-launcher">🎬 Sahneyi Seslendir</button>
   <script>
     // Oyun "localhost:5173" DISINDA bir adresten aciliyorsa (orn. ayni
     // WiFi/LAN'daki baska bir cihazdan senin bilgisayarinin IP'siyle

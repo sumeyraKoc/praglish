@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from core.database import SessionLocal, get_db
-from models.models import Dialogue, GameSession, User
+from models.models import Dialogue, GameSession, LearningTurnEvent, User
 from services.ai_client import evaluate_and_respond, extract_utterance
 from services.dialogue_history import build_evaluator_history
 from services.learning_analytics import LearningAnalyticsService
@@ -124,6 +124,19 @@ async def process_turn(
                 text=result.npc_response,
             )
         )
+
+    # Trend/seri istatistikleri icin her turu metin saklamadan kaydet. Bu
+    # basit INSERT extractor'dan bagimsizdir; extractor arka planda hata verse
+    # bile dashboard'un dogru/yanlis tur sayisi eksilmez.
+    db.add(
+        LearningTurnEvent(
+            user_id=session.user_id,
+            session_id=session.id,
+            dialogue_id=dialogue_id,
+            location=session.location,
+            outcome="correct" if result.accepted else "incorrect",
+        )
+    )
 
     session.scenario_state = result.updated_scenario_state
 

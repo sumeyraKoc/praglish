@@ -156,6 +156,12 @@ export class LibraryScene extends Phaser.Scene {
       if (isTextEntryEvent(event)) return;
       if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("MenuScene");
     });
+    this.input.keyboard?.on("keydown-P", (event: KeyboardEvent) => {
+      if (isTextEntryEvent(event)) return;
+      if (!this.dialogue.visible && !this.vocabPanel.visible) {
+        this.scene.start("DashboardScene", { returnScene: "LibraryScene" });
+      }
+    });
   }
 
   update(): void {
@@ -346,7 +352,7 @@ export class LibraryScene extends Phaser.Scene {
       fontSize: "22px",
       color: "#f2c879",
     }).setScrollFactor(0).setDepth(100000);
-    this.add.text(24, 54, "Zemine tıkla · Lina'ya yaklaş ve E'ye bas · B: Bakery", {
+    this.add.text(24, 54, "Zemine tıkla · E: Etkileşim · B: Bakery · S: Studio · P: Progress · M: Menu", {
       fontFamily: "Arial, sans-serif",
       fontSize: "15px",
       color: "#e1d9cb",
@@ -596,7 +602,12 @@ export class LibraryScene extends Phaser.Scene {
   }
 
   private renderTurnResult(result: TurnResponse): void {
-    this.appendMessage("LINA", result.npc_response, "npc");
+    const isCoach = result.response_speaker === "coach";
+    this.appendMessage(
+      isCoach ? "COACH" : "LINA",
+      result.npc_response,
+      isCoach ? "feedback" : "npc",
+    );
     if (!result.accepted && result.correction && result.correction !== result.npc_response) {
       this.appendMessage("SUGGESTION", result.correction, "feedback");
     }

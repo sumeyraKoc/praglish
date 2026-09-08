@@ -134,6 +134,74 @@
     /* StudioScene icindeki (Phaser DOM elemani) giris butonu - artik
        oyunun disina tasan sabit bir kose butonu degil, RoomScene/LibraryScene
        'den "S" tusuyla girilen kendi sahnesinin ici. */
+
+    /* Pixel-paper ilhamli ilerleme defteri. Phaser DOM container'iyle birlikte
+       canvas olceginde hareket eder; normal odalarda DOM'a hic eklenmez. */
+    .progress-dashboard {
+      box-sizing: border-box;
+      width: 1120px;
+      height: 660px;
+      padding: 18px 26px 24px;
+      border: 5px solid #d8c98f;
+      outline: 3px solid #302d38;
+      background: #10182d;
+      color: #26231f;
+      font-family: "Courier New", monospace;
+      image-rendering: pixelated;
+    }
+    .progress-header { display: flex; align-items: center; justify-content: space-between; height: 54px; color: #e4d69d; }
+    .progress-header strong { display: block; font: 900 30px "Courier New", monospace; letter-spacing: 3px; }
+    .progress-header span { font-size: 11px; letter-spacing: 3px; }
+    .paper-close { border: 2px solid #d8c98f; background: #151d33; color: #e4d69d; padding: 8px 12px; font: 700 12px "Courier New", monospace; cursor: pointer; }
+    .paper-tabs { display: flex; gap: 8px; margin: 4px 0 -2px 30px; position: relative; z-index: 2; }
+    .paper-tabs button { border: 2px solid #554f43; border-bottom: 0; background: #aa9b70; color: #29261f; padding: 8px 18px; font: 900 12px "Courier New", monospace; cursor: pointer; }
+    .paper-tabs button.active { background: #e0d39f; transform: translateY(2px); }
+    .paper-book { position: relative; display: grid; grid-template-columns: 1fr 28px 1fr; height: 526px; filter: drop-shadow(0 14px 12px rgba(0,0,0,.38)); }
+    .paper-page { box-sizing: border-box; min-width: 0; padding: 28px 34px; background-color: #ded09a; background-image: repeating-linear-gradient(0deg, transparent 0 27px, rgba(73,65,49,.09) 28px); border: 3px solid #6c624c; overflow: hidden; }
+    .paper-page.left { border-radius: 12px 2px 2px 12px; box-shadow: inset -12px 0 18px rgba(74,62,39,.16); }
+    .paper-page.right { border-radius: 2px 12px 12px 2px; box-shadow: inset 12px 0 18px rgba(74,62,39,.16); }
+    .book-spine { background: repeating-linear-gradient(0deg, #253551 0 8px, #b9ac7c 9px 12px); border-top: 3px solid #6c624c; border-bottom: 3px solid #6c624c; }
+    .paper-page h1 { margin: 0 0 20px; padding-bottom: 9px; border-bottom: 3px double #665d49; text-align: center; font-size: 22px; letter-spacing: 2px; }
+    .paper-page h2 { margin: 8px 0; text-align: center; font-size: 19px; }
+    .paper-scroll { height: 420px; overflow-y: auto; scrollbar-color: #756a50 #c7b982; }
+    .paper-empty { grid-column: 1 / -1; align-self: center; justify-self: center; color: #766d58; font: 700 15px "Courier New", monospace; text-align: center; padding: 30px; }
+    .pixel-avatar { width: 82px; height: 82px; margin: 8px auto; display: grid; place-items: center; border: 4px double #554f43; background: #c2b47f; font-size: 45px; }
+    .level-ribbon { width: max-content; margin: 10px auto 20px; padding: 6px 14px; background: #253551; color: #e0d39f; font-weight: 900; }
+    .paper-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .paper-stat-grid div { display: flex; justify-content: space-between; padding: 12px; border: 2px solid #756a50; background: rgba(255,249,211,.22); }
+    .paper-stat-grid span { font-size: 12px; font-weight: 800; }
+    .paper-stat-grid strong { color: #873e3e; }
+    .success-score { display: flex; align-items: baseline; justify-content: center; gap: 12px; margin-bottom: 12px; }
+    .success-score strong { color: #456645; font-size: 38px; }
+    .success-score span { font-weight: 900; }
+    .week-chart { height: 125px; display: flex; align-items: end; justify-content: space-around; border-left: 2px solid #756a50; border-bottom: 2px solid #756a50; padding: 0 8px; }
+    .week-column { width: 46px; text-align: center; }
+    .week-bars { height: 94px; display: flex; align-items: end; justify-content: center; gap: 3px; }
+    .week-bars i { display: block; width: 13px; min-height: 2px; border: 1px solid #4d493e; }
+    .week-bars .correct { background: #66845e; }
+    .week-bars .incorrect { background: #a85454; }
+    .week-column small { font-size: 9px; }
+    .location-list { list-style: none; margin: 22px 0 0; padding: 0; border-top: 2px solid #756a50; }
+    .location-list li { display: flex; justify-content: space-between; padding: 9px 4px; border-bottom: 1px dashed #887c5e; text-transform: uppercase; }
+    .muted { color: #766d58; }
+    .grammar-grid { display: grid; gap: 10px; }
+    .grammar-card { position: relative; display: grid; gap: 6px; padding: 10px; border: 2px solid #756a50; overflow: hidden; }
+    .grammar-card b, .grammar-card span { position: relative; z-index: 1; }
+    .grammar-card span { font-size: 12px; }
+    .grammar-card i { position: absolute; left: 0; bottom: 0; height: 5px; background: #66845e; }
+    .grammar-card.bad i { background: #a85454; }
+    .grammar-card.unseen { opacity: .64; border-style: dashed; }
+    .grammar-card.unseen i { background: transparent; }
+    .paper-meter { display: grid; grid-template-columns: 95px 1fr 35px; align-items: center; gap: 10px; margin: 15px 0; }
+    .paper-meter span { font-size: 12px; font-weight: 900; }
+    .paper-meter > i { display: block; height: 16px; border: 2px solid #665d49; background: #b7aa7c; }
+    .paper-meter > i b { display: block; height: 100%; background: #52768a; }
+    .paper-meter.error > i b { background: #a85454; }
+    .idiom-card { display: flex; gap: 12px; align-items: center; padding: 12px; margin-bottom: 10px; border: 2px solid #756a50; background: rgba(255,249,211,.18); }
+    .idiom-card > span { display: grid; place-items: center; width: 34px; height: 34px; background: #a85454; color: #eadca5; }
+    .idiom-card div { display: grid; gap: 4px; }
+    .idiom-card small { color: #655e50; }
+
     .dub-launcher {
       height: 48px;
       padding: 0 24px;

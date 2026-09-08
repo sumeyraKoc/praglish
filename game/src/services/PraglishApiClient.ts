@@ -56,6 +56,36 @@ export interface SpeechToTextResult {
   languageCode: string | null;
 }
 
+export interface DashboardData {
+  profile: { user_id: number; username: string; xp: number; coins: number; level: number };
+  summary: {
+    total_turns: number;
+    correct_turns: number;
+    incorrect_turns: number;
+    success_percent: number;
+    words_learned: number;
+    idioms_discovered: number;
+  };
+  weekly_activity: { date: string; correct: number; incorrect: number }[];
+  locations: { name: string; turn_count: number }[];
+  grammar_topics: {
+    topic_id: number;
+    topic_name: string;
+    correct_count: number;
+    incorrect_count: number;
+    mastery_percent: number;
+  }[];
+  vocabulary_levels: { name: string; count: number }[];
+  vocabulary_errors: { name: string; count: number }[];
+  idioms: {
+    normalized_idiom: string;
+    display_idiom: string;
+    correct_count: number;
+    incorrect_count: number;
+    last_used_at: string | null;
+  }[];
+}
+
 export interface PraglishSessionConfig {
   location: string;
   npcRole: string;
@@ -148,6 +178,10 @@ export class PraglishApiClient {
     return this.requestGet<VocabularyProgressEntry[]>(
       `/api/vocabulary/progress/${this.userId}/${this.config.location}`,
     );
+  }
+
+  public async getDashboard(): Promise<DashboardData> {
+    return this.request<DashboardData>("/api/analytics/dashboard", this.getGuestCredentials());
   }
 
   /**

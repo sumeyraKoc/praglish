@@ -29,7 +29,7 @@ export class StudioScene extends Phaser.Scene {
       color: "#78dce8",
     }).setDepth(10);
 
-    this.add.text(24, 54, "L: Library · B: Bakery · M: Menu", {
+    this.add.text(24, 54, "L: Library · B: Bakery · P: Progress · M: Menu", {
       fontFamily: "Arial, sans-serif",
       fontSize: "15px",
       color: "#d8cfeb",
@@ -51,5 +51,8 @@ export class StudioScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-L", () => this.scene.start("LibraryScene"));
     this.input.keyboard?.on("keydown-B", () => this.scene.start("RoomScene"));
     this.input.keyboard?.on("keydown-M", () => this.scene.start("MenuScene"));
+    this.input.keyboard?.on("keydown-P", () => {
+      this.scene.start("DashboardScene", { returnScene: "StudioScene" });
+    });
   }
 }

@@ -92,6 +92,20 @@ class LearningExtractionEvent(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class LearningTurnEvent(Base):
+    """Dashboard trendleri icin metin icermeyen, her turda yazilan olay."""
+
+    __tablename__ = "learning_turn_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, index=True)
+    dialogue_id = Column(Integer, ForeignKey("dialogues.id"), nullable=True, unique=True)
+    location = Column(String, nullable=False, index=True)
+    outcome = Column(String, nullable=False)  # correct / incorrect
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class GrammarUsageStat(Base):
     __tablename__ = "grammar_usage_stats"
     __table_args__ = (

@@ -93,7 +93,7 @@ def run() -> None:
     )
     evaluator = LanguageEvaluator(
         estimator=GeminiPlausibilityEstimator(api_key=api_key, model=model),
-        threshold=float(os.getenv("LANGUAGE_ACCEPTANCE_THRESHOLD", "90")),
+        threshold=float(os.getenv("LANGUAGE_ACCEPTANCE_THRESHOLD", "50")),
     )
     correct_extractor = CorrectExtractor(
         GeminiCorrectExtractionProvider(api_key=api_key, model=model)

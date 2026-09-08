@@ -164,7 +164,7 @@ def get_language_evaluator() -> LanguageEvaluator:
         )
     return LanguageEvaluator(
         estimator=estimator,
-        threshold=float(_env("LANGUAGE_ACCEPTANCE_THRESHOLD", "90")),
+        threshold=float(_env("LANGUAGE_ACCEPTANCE_THRESHOLD", "50")),
     )
 
 

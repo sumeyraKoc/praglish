@@ -3,6 +3,7 @@ import { RoomScene } from "./scenes/RoomScene";
 import { LibraryScene } from "./scenes/LibraryScene";
 import { DubScene } from "./scenes/DubScene";
 import { StudioScene } from "./scenes/StudioScene";
+import { DashboardScene } from "./scenes/DashboardScene";
 import { MenuScene } from "./scenes/MenuScene";
 
 new Phaser.Game({
@@ -27,5 +28,5 @@ new Phaser.Game({
   // StudioScene'e eski yoldan da girilebilir (LibraryScene/RoomScene'den
   // "S" tusu, bkz. DomInputGuard.ts). Her sahneden "M" tusuyla menuye
   // donulebilir.
-  scene: [MenuScene, LibraryScene, RoomScene, StudioScene, DubScene],
+  scene: [MenuScene, LibraryScene, RoomScene, StudioScene, DubScene, DashboardScene],
 });

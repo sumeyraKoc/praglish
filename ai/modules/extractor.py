@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
+from shared.grammar_taxonomy import GRAMMAR_TOPICS
 from shared.schemas import (
     CorrectExtractionResult,
     ExtractionRequest,
@@ -28,60 +29,6 @@ CORRECT_PROMPT_PATH = (
 INCORRECT_PROMPT_PATH = (
     Path(__file__).resolve().parents[1] / "prompts" / "incorrect_extractor.txt"
 )
-
-GRAMMAR_TOPICS = {
-    1: "Parts of Speech",
-    2: "Sentence Structure",
-    3: "Word Order",
-    4: "Present Tenses",
-    5: "Past Tenses",
-    6: "Future Forms",
-    7: "Questions",
-    8: "Negatives",
-    9: "Modal Verbs",
-    10: "Semi-modals",
-    11: "Nouns",
-    12: "Articles",
-    13: "Determiners",
-    14: "Quantifiers",
-    15: "Pronouns",
-    16: "Adjectives",
-    17: "Comparatives & Superlatives",
-    18: "Adverbs",
-    19: "Prepositions",
-    20: "Conjunctions",
-    21: "Gerunds",
-    22: "Infinitives",
-    23: "Gerund vs Infinitive",
-    24: "Participles",
-    25: "Passive Voice",
-    26: "Causatives",
-    27: "Conditionals",
-    28: "Relative Clauses",
-    29: "Noun Clauses",
-    30: "Adverb Clauses",
-    31: "Reported Speech",
-    32: "Direct Speech",
-    33: "Imperatives",
-    34: "Wish / If only",
-    35: "Used to / Would",
-    36: "Subject-Verb Agreement",
-    37: "Possession",
-    38: "There is / There are",
-    39: "It structures",
-    40: "Tag Questions",
-    41: "Indirect Questions",
-    42: "Question Forms",
-    43: "Phrasal Verbs",
-    44: "Multi-word Verbs",
-    45: "Ellipsis & Substitution",
-    46: "Emphasis",
-    47: "Inversion",
-    48: "Subjunctive",
-    49: "Unreal / Hypothetical structures",
-    50: "Linking structures",
-}
-
 
 class ExtractionProvider(Protocol):
     def analyze(self, request: ExtractionRequest) -> ExtractionResult: ...

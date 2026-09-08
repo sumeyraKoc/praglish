@@ -9,4 +9,3 @@ venv/
 node_modules/
 dist/
 .pnpm-store/
-ngrok.log

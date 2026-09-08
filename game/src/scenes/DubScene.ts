@@ -1,48 +1,45 @@
 import Phaser from "phaser";
-import { DubApiClient, DubApiError, DubScript, DubServerMessage, WordVerdict } from "../services/DubApiClient";
+import { DubApiClient, DubApiError, DubScript, DubScriptLine, WordVerdict } from "../services/DubApiClient";
 
 /**
- * "Sahneyi Seslendir" (Dub the Scene) - cok oyunculu Listen & Repeat modu.
+ * "Sahneyi Seslendir" (Dub the Scene) - TEK KISILIK Listen & Repeat modu.
  *
  * Bu sahne bilincli olarak RoomScene/LibraryScene'den BAGIMSIZ: kendi
- * DOM panelini kurar, kendi WebSocket baglantisini yonetir, ve normal
- * oyun akisina (harita/NPC/kelime) hic dokunmaz. Mimari ve gizlilik
- * kararlari icin bkz. api/routes/dub.py dosya basi aciklamasi - ayni
- * kurallar burada da gecerli:
- *   - Sunucuda veritabani/kalici depolama yok, oda bellekte.
- *   - Sirasi olmayan oyuncuya repligin METNI VE SESI HICBIR ZAMAN
- *     gonderilmiyor (bkz. handleTurn) - "herkese yolla, frontend'te
- *     gizle" degil, sunucu zaten gondermiyor.
- *   - Gercek video/dizi klibi yok (istisna: dogrulanmis kamu mali bir
- *     ses klibine dayanan scriptler - bkz. dub.py DubScript.audio_url).
+ * DOM panelini kurar, normal oyun akisina (harita/NPC/kelime) hic
+ * dokunmaz. Mimari kararlar icin bkz. api/routes/dub.py dosya basi
+ * aciklamasi.
  *
- * Bir odaya KOD ILE katilan oyuncu, hangi karakterlerin var oldugunu ve
- * hangilerinin zaten dolu oldugunu /api/dub/rooms/{code} (GET) ile o
- * spesifik odadan ogrenir - bkz. handleJoinRoom. (Eskiden bu bilgi
- * /api/dub/scripts listesinin ilk elemanindan TAHMIN EDILIYORDU, birden
- * fazla script eklenince - orn. host "Charade" ile oda actiginda -
- * katilan oyuncuya yanlislikla "sample-cafe"nin A/B karakterleri
- * gosteriliyordu; bu artik dogru script'ten okunuyor.)
+ * NOT: bu ozellik ONCE cok oyunculu (oda kur/katil, WebSocket, ngrok ile
+ * farkli aglardan katilim) olarak yapilmisti; proje kararlastirdi ki su an
+ * icin TEK KISILIK ilerlesin - coklu oyuncu ileride ayrica eklenecek.
+ * Akis simdi soyle:
+ *   1) Oyuncu bir sahne (script) ve seslendirmek istedigi TEK bir karakter
+ *      secer.
+ *   2) Sahne bastan sona, repliklerin sirasina gore ilerler: secilmeyen
+ *      karakterin repliklerinde orijinal ses (klip varsa klipten, yoksa
+ *      TTS ile) oldugu gibi/tam ses seviyesinde calinir; secilen
+ *      karakterin repliklerinde "dinle -> tekrar et -> kaydet -> puanla"
+ *      akisi calisir.
+ *   3) Sahne bitince oyuncu kendi repliklerinin puanlarini gorur ve
+ *      isterse tum sahneyi bastan dinleyebilir - bu tekrar dinlemede
+ *      SADECE kendi sectigi karakterin sesi kisilir (bkz. playFullScene),
+ *      digerleri tam ses seviyesinde kalir.
  */
 
-type Screen = "start" | "character-pick" | "lobby" | "turn" | "finished";
+type Screen = "start" | "your-turn" | "other-turn" | "finished";
 
-interface LobbyPlayer {
-  name: string;
-  character: string;
-}
-
-interface FinishedSummaryLine {
-  line_id: number;
-  speaker: string;
-  player_name: string;
-  expected: string;
-  transcript: string;
-  accuracy_percent: number;
+interface SummaryEntry {
+  line: DubScriptLine;
   words: WordVerdict[];
+  accuracy_percent: number;
 }
 
 const RECORDING_AUTO_STOP_MS = 12_000;
+// "Tum Sahneyi Dinle"de sadece kullanicinin sectigi karakterin sesini
+// kismak icin (bkz. dosya basi aciklama, madde 3) - tamamen susturmuyoruz
+// (0), boylece sahne "kesintisiz" hissi vermeye devam ediyor ama oyuncu
+// kendi repliginin nerede oldugunu net duyuyor.
+const DUCK_VOLUME = 0.12;
 
 export class DubScene extends Phaser.Scene {
   private readonly api = new DubApiClient();
@@ -51,23 +48,14 @@ export class DubScene extends Phaser.Scene {
   private statusEl: HTMLElement | null = null;
   private screen: Screen = "start";
 
-  private ws: WebSocket | null = null;
-  private hasJoined = false;
+  private availableScripts: DubScript[] = [];
+  private scriptSelectEl: HTMLSelectElement | null = null;
+  private charListEl: HTMLElement | null = null;
 
-  private roomCode = "";
-  private playerName = "";
-  private pendingCharacter = "";
+  private script: DubScript | null = null;
   private myCharacter = "";
-  private isHost = false;
-
-  private characters: string[] = [];
-  private hostName = "";
-  private players: LobbyPlayer[] = [];
-
-  private currentLineId: number | null = null;
-  private currentLineSpeaker = "";
-  private currentLineIndex = 0;
-  private currentTotalLines = 0;
+  private lineIndex = 0;
+  private summary: SummaryEntry[] = [];
 
   private mediaStream: MediaStream | null = null;
   private mediaRecorder: MediaRecorder | null = null;
@@ -78,9 +66,6 @@ export class DubScene extends Phaser.Scene {
   private currentAudio: HTMLAudioElement | null = null;
   private playbackAbort = false;
 
-  private availableScripts: DubScript[] = [];
-  private scriptSelectEl: HTMLSelectElement | null = null;
-
   private turnBodyEl: HTMLElement | null = null;
   private turnRecordBtn: HTMLButtonElement | null = null;
 
@@ -89,7 +74,6 @@ export class DubScene extends Phaser.Scene {
   }
 
   public create(): void {
-    this.hasJoined = false;
     this.screen = "start";
     this.renderStart();
     void this.loadScripts();
@@ -99,20 +83,33 @@ export class DubScene extends Phaser.Scene {
   private async loadScripts(): Promise<void> {
     try {
       this.availableScripts = await this.api.listScripts();
+      if (this.screen !== "start") return; // kullanici cok hizli ilerlediyse bu ekran artik yok
+      this.populateScriptSelect();
     } catch {
-      this.availableScripts = []; // secim kutusu "At the Cafe (sample)" varsayilanina duser
+      this.availableScripts = [];
+      if (this.screen === "start") {
+        this.setStatus("Sahneler yuklenemedi. Sunucu calisiyor mu? Sayfayi yenileyip tekrar dene.", true);
+      }
     }
-    this.populateScriptSelect();
   }
 
   private populateScriptSelect(): void {
     if (!this.scriptSelectEl) return;
-    if (this.availableScripts.length === 0) {
-      this.scriptSelectEl.innerHTML = '<option value="sample-cafe">At the Cafe (sample)</option>';
-      return;
-    }
     this.scriptSelectEl.innerHTML = this.availableScripts
       .map((s) => `<option value="${this.escapeHtml(s.id)}">${this.escapeHtml(s.title)}</option>`)
+      .join("");
+    this.refreshCharacterButtons();
+  }
+
+  private refreshCharacterButtons(): void {
+    if (!this.charListEl || !this.scriptSelectEl) return;
+    const script = this.availableScripts.find((s) => s.id === this.scriptSelectEl?.value);
+    const characters = script?.characters ?? [];
+    this.charListEl.innerHTML = characters
+      .map(
+        (character) =>
+          `<button type="button" class="dub-char-btn" data-character="${this.escapeHtml(character)}">${this.escapeHtml(character)}</button>`,
+      )
       .join("");
   }
 
@@ -126,8 +123,6 @@ export class DubScene extends Phaser.Scene {
     this.clearRecordAutoStop();
     if (this.isRecording) this.mediaRecorder?.stop();
     this.mediaStream?.getTracks().forEach((track) => track.stop());
-    this.ws?.close();
-    this.ws = null;
     this.panel?.destroy();
     this.panel = null;
   }
@@ -160,8 +155,21 @@ export class DubScene extends Phaser.Scene {
     return div.innerHTML;
   }
 
+  private describeError(error: unknown, fallback: string): string {
+    if (error instanceof DubApiError) return error.message;
+    if (error instanceof Error) return error.message;
+    return fallback;
+  }
+
+  private resetState(): void {
+    this.script = null;
+    this.myCharacter = "";
+    this.lineIndex = 0;
+    this.summary = [];
+  }
+
   // ---------------------------------------------------------------------
-  // Ekran 1: baslangic (oda kur / odaya katil)
+  // Ekran 1: baslangic (sahne + karakter secimi)
   // ---------------------------------------------------------------------
 
   private renderStart(): void {
@@ -170,292 +178,91 @@ export class DubScene extends Phaser.Scene {
       <div class="dialogue-panel dub-panel">
         <div class="dialogue-header">
           <strong>Sahneyi Seslendir</strong>
-          <span>Listen &amp; Repeat - coklu oyuncu</span>
+          <span>Listen &amp; Repeat</span>
           <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
         </div>
-        <div class="dialogue-status" data-role="status">Bir isim gir ve oda kur ya da bir koda katil.</div>
+        <div class="dialogue-status" data-role="status">Bir sahne ve seslendirmek istedigin karakteri sec.</div>
         <div class="dub-body dub-col">
-          <input class="dub-input" data-role="name" type="text" placeholder="Adin" maxlength="24" />
-          <div class="dub-row">
-            <select class="dub-input" data-role="script"><option value="sample-cafe">Yükleniyor...</option></select>
-          </div>
-          <div class="dub-row">
-            <button type="button" class="dub-btn" data-action="create">Oda Kur</button>
-          </div>
-          <div class="dub-row">
-            <input class="dub-input" data-role="join-code" type="text" placeholder="Oda kodu" maxlength="4" style="width:110px; text-transform:uppercase;" />
-            <button type="button" class="dub-btn secondary" data-action="join">Odaya Katil</button>
-          </div>
+          <select class="dub-input" data-role="script"><option value="">Yukleniyor...</option></select>
+          <div class="dub-char-list" data-role="char-list"></div>
         </div>
       </div>
     `);
 
-    const nameInput = node.querySelector('[data-role="name"]') as HTMLInputElement;
-    const joinCodeInput = node.querySelector('[data-role="join-code"]') as HTMLInputElement;
-    const createBtn = node.querySelector('[data-action="create"]') as HTMLButtonElement;
-    const joinBtn = node.querySelector('[data-action="join"]') as HTMLButtonElement;
     this.scriptSelectEl = node.querySelector('[data-role="script"]') as HTMLSelectElement;
+    this.charListEl = node.querySelector('[data-role="char-list"]') as HTMLElement;
     this.populateScriptSelect();
 
-    createBtn.addEventListener("click", () => {
-      const scriptId = this.scriptSelectEl?.value || "sample-cafe";
-      void this.handleCreateRoom(nameInput.value, scriptId);
-    });
-    joinBtn.addEventListener("click", () => {
-      void this.handleJoinRoom(nameInput.value, joinCodeInput.value);
-    });
-  }
+    this.scriptSelectEl.addEventListener("change", () => this.refreshCharacterButtons());
 
-  private async handleCreateRoom(rawName: string, scriptId: string): Promise<void> {
-    const name = rawName.trim();
-    if (!name) {
-      this.setStatus("Once adini yaz.");
-      return;
-    }
-    this.setStatus("Oda kuruluyor...");
-    try {
-      const response = await this.api.createRoom(name, scriptId);
-      this.playerName = name;
-      this.roomCode = response.room_code;
-      this.isHost = true;
-      this.characters = response.script.characters;
-      this.hostName = name;
-      this.renderCharacterPick();
-    } catch (error: unknown) {
-      this.setStatus(this.describeError(error, "Oda kurulamadi."));
-    }
-  }
-
-  private async handleJoinRoom(rawName: string, rawCode: string): Promise<void> {
-    const name = rawName.trim();
-    const code = rawCode.trim().toUpperCase();
-    if (!name) {
-      this.setStatus("Once adini yaz.");
-      return;
-    }
-    if (code.length !== 4) {
-      this.setStatus("Oda kodu 4 karakter olmali.");
-      return;
-    }
-    this.setStatus("Oda bilgisi aliniyor...");
-    try {
-      const info = await this.api.getRoomInfo(code);
-      this.playerName = name;
-      this.roomCode = code;
-      this.isHost = false;
-      this.characters = info.characters;
-      this.hostName = info.host_name;
-      this.renderCharacterPick(info.taken_characters);
-      if (info.state !== "lobby") {
-        // renderCharacterPick() az once statusEl'i yeni panele bagladi -
-        // uyariyi bundan SONRA basmaliyiz, yoksa panelin kendi varsayilan
-        // metniyle uzerine yazilir.
-        this.setStatus("Uyari: bu oda zaten baslamis ya da bitmis.", true);
-      }
-    } catch (error: unknown) {
-      this.setStatus(this.describeError(error, "Oda bulunamadi. Kodu kontrol et."), true);
-    }
-  }
-
-  private describeError(error: unknown, fallback: string): string {
-    if (error instanceof DubApiError) return error.message;
-    if (error instanceof Error) return error.message;
-    return fallback;
-  }
-
-  // ---------------------------------------------------------------------
-  // Ekran 2: karakter secimi (secince WebSocket join gonderilir)
-  // ---------------------------------------------------------------------
-
-  private renderCharacterPick(takenCharacters: string[] = []): void {
-    this.screen = "character-pick";
-    const charButtons = this.characters
-      .map((character) => {
-        const isTaken = takenCharacters.includes(character);
-        const cls = isTaken ? "dub-char-btn taken" : "dub-char-btn";
-        const disabled = isTaken ? "disabled" : "";
-        const label = isTaken ? `${character} (dolu)` : character;
-        return `<button type="button" class="${cls}" data-character="${this.escapeHtml(character)}" ${disabled}>${this.escapeHtml(label)}</button>`;
-      })
-      .join("");
-
-    const node = this.mount(`
-      <div class="dialogue-panel dub-panel">
-        <div class="dialogue-header">
-          <strong>Oda: ${this.escapeHtml(this.roomCode)}</strong>
-          <span>${this.isHost ? "Oda kodunu arkadaslarinla paylas" : "Bir karakter sec"}</span>
-          <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
-        </div>
-        <div class="dialogue-status" data-role="status">Seslendirmek istedigin karakteri sec.</div>
-        <div class="dub-body">
-          <div class="dub-char-list" data-role="char-list">${charButtons}</div>
-          <div class="dub-row" style="margin-top:14px;">
-            <button type="button" class="dub-btn secondary" data-action="back">Geri</button>
-          </div>
-        </div>
-      </div>
-    `);
-
-    const backBtn = node.querySelector('[data-action="back"]') as HTMLButtonElement;
-    backBtn.addEventListener("click", () => {
-      this.ws?.close();
-      this.ws = null;
-      this.renderStart();
-    });
-
-    const charList = node.querySelector('[data-role="char-list"]') as HTMLElement;
-    charList.addEventListener("click", (event) => {
+    this.charListEl.addEventListener("click", (event) => {
       const target = (event.target as HTMLElement).closest("[data-character]") as HTMLElement | null;
       if (!target) return;
       const character = target.dataset["character"];
       if (!character) return;
-      this.chooseCharacter(character);
+      const script = this.availableScripts.find((s) => s.id === this.scriptSelectEl?.value);
+      if (!script) return;
+      this.startScene(script, character);
     });
   }
 
-  private chooseCharacter(character: string): void {
-    this.pendingCharacter = character;
-    this.setStatus(`'${character}' olarak katiliniyor...`);
-    this.ensureSocket(() => this.sendJoin(character));
+  private startScene(script: DubScript, character: string): void {
+    this.script = script;
+    this.myCharacter = character;
+    this.lineIndex = 0;
+    this.summary = [];
+    this.advanceLine();
   }
 
-  private ensureSocket(onOpen: () => void): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      onOpen();
+  // ---------------------------------------------------------------------
+  // Sahne ilerleme - her replikte kimin sirasi oldugunu kontrol eder
+  // ---------------------------------------------------------------------
+
+  private advanceLine(): void {
+    if (!this.script) return;
+    if (this.lineIndex >= this.script.lines.length) {
+      this.renderFinished();
       return;
     }
-    if (this.ws) {
-      this.ws.close();
-    }
-    const ws = this.api.connectRoom(this.roomCode);
-    this.ws = ws;
-    ws.addEventListener("open", () => onOpen());
-    ws.addEventListener("message", (event) => this.handleServerMessage(event));
-    ws.addEventListener("close", (event) => this.handleSocketClose(event));
-    ws.addEventListener("error", () => {
-      if (!this.hasJoined) this.setStatus("Baglanti kurulamadi. Oda kodunu kontrol et.");
-    });
-  }
-
-  private sendJoin(character: string): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ type: "join", name: this.playerName, character }));
-  }
-
-  private handleSocketClose(event: CloseEvent): void {
-    if (this.hasJoined) return; // oyun bittikten/oda kapandiktan sonraki normal kapanma
-    if (event.code === 4404) {
-      this.setStatus("Oda bulunamadi. Kodu kontrol edip tekrar dene.");
-    } else if (this.screen === "character-pick") {
-      this.setStatus("Baglanti koptu. Tekrar dene.");
-    }
-  }
-
-  // ---------------------------------------------------------------------
-  // Sunucudan gelen mesajlar
-  // ---------------------------------------------------------------------
-
-  private handleServerMessage(event: MessageEvent<string>): void {
-    let message: DubServerMessage;
-    try {
-      message = JSON.parse(event.data) as DubServerMessage;
-    } catch {
+    const line = this.script.lines[this.lineIndex];
+    if (!line) {
+      // lineIndex kontrolu yukarida yapildi, buraya normalde hic dusmez -
+      // TypeScript'in noUncheckedIndexedAccess kurali icin savunma amacli.
+      this.renderFinished();
       return;
     }
-
-    switch (message.type) {
-      case "room_state": {
-        this.hostName = message.host_name;
-        if (this.characters.length === 0) this.characters = message.characters;
-        this.players = message.players;
-        if (!this.hasJoined) {
-          this.hasJoined = true;
-          this.myCharacter = this.pendingCharacter;
-        }
-        if (this.screen !== "turn" && this.screen !== "finished") this.renderLobby();
-        break;
-      }
-      case "turn": {
-        this.currentLineId = message.line_id;
-        this.currentLineSpeaker = message.speaker;
-        this.currentLineIndex = message.line_index;
-        this.currentTotalLines = message.total_lines;
-        if (message.for_you && message.text !== undefined) {
-          const voice = message.voice ?? "Kore";
-          this.renderTurnForYou(message.text, voice, message.audio_url, message.start_seconds, message.end_seconds);
-        } else {
-          this.renderTurnForOther();
-        }
-        break;
-      }
-      case "finished": {
-        this.renderFinished(message.summary);
-        break;
-      }
-      case "error": {
-        // Backend hata metinleri Ingilizce (bkz. dub.py) - en sik karsilasilan
-        // "Baslat"a basinca-tum-karakterler-dolmamis durumunu kullaniciya
-        // daha anlasilir gostermek icin burada ceviriyoruz, digerlerini
-        // oldugu gibi gosteriyoruz.
-        const unassignedPrefix = "unassigned characters: ";
-        const text = message.detail.startsWith(unassignedPrefix)
-          ? `Once herkes bir karakter secmeli (bos: ${message.detail.slice(unassignedPrefix.length)}).`
-          : message.detail;
-        this.setStatus(text, true);
-        break;
-      }
+    if (line.speaker === this.myCharacter) {
+      this.renderYourTurn(line);
+    } else {
+      this.renderOtherTurn(line);
     }
   }
 
+  /**
+   * Bir replik icin referans sesi calar: script gercek bir klibe
+   * dayaniyorsa (bkz. DubScript.audio_url) o klibin [start, end) araligini,
+   * yoksa TTS ile o an sentezlenmis sesi. `volume` sadece "Tum Sahneyi
+   * Dinle" (playFullScene) adiminda 1'den farkli olur.
+   */
+  private playReferenceForLine(line: DubScriptLine, volume: number): Promise<void> {
+    if (this.script?.audio_url && line.start_seconds !== undefined && line.start_seconds !== null) {
+      return this.playAudioSegment(this.script.audio_url, line.start_seconds, line.end_seconds ?? null, volume);
+    }
+    return this.playLine(line.text, line.voice, volume);
+  }
+
   // ---------------------------------------------------------------------
-  // Ekran 3: lobi (oyuncular + baslat)
+  // Ekran 2a: sira sende (dinle -> tekrar et -> kaydet -> puanla)
   // ---------------------------------------------------------------------
 
-  private renderLobby(): void {
-    this.screen = "lobby";
-    const playerRows = this.players
-      .map((p) => `<li>${this.escapeHtml(p.character)}: ${this.escapeHtml(p.name)}${p.name === this.hostName ? " (host)" : ""}</li>`)
-      .join("");
-    const canStart = this.isHost;
-
+  private renderYourTurn(line: DubScriptLine): void {
+    this.screen = "your-turn";
+    const total = this.script!.lines.length;
     const node = this.mount(`
       <div class="dialogue-panel dub-panel">
         <div class="dialogue-header">
-          <strong>Oda: ${this.escapeHtml(this.roomCode)}</strong>
-          <span>Sen: ${this.escapeHtml(this.myCharacter)}</span>
-          <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
-        </div>
-        <div class="dialogue-status" data-role="status">${canStart ? "Herkes hazir olunca baslat." : "Host baslatmasini bekliyorsun..."}</div>
-        <div class="dub-body dub-col">
-          <ul class="dub-player-list">${playerRows}</ul>
-          ${canStart ? '<button type="button" class="dub-btn" data-action="start">Baslat</button>' : ""}
-        </div>
-      </div>
-    `);
-
-    const startBtn = node.querySelector('[data-action="start"]') as HTMLButtonElement | null;
-    startBtn?.addEventListener("click", () => {
-      this.ws?.send(JSON.stringify({ type: "start" }));
-    });
-  }
-
-  // ---------------------------------------------------------------------
-  // Ekran 4a: sira sende (dinle -> tekrar et -> puanla)
-  // ---------------------------------------------------------------------
-
-  private renderTurnForYou(
-    text: string,
-    voice: string,
-    audioUrl?: string,
-    startSeconds?: number,
-    endSeconds?: number | null,
-  ): void {
-    this.screen = "turn";
-    const node = this.mount(`
-      <div class="dialogue-panel dub-panel">
-        <div class="dialogue-header">
-          <strong>Sira sende! (${this.escapeHtml(this.currentLineSpeaker)})</strong>
-          <span>Replik ${this.currentLineIndex + 1}/${this.currentTotalLines}</span>
+          <strong>Sira sende! (${this.escapeHtml(this.myCharacter)})</strong>
+          <span>Replik ${this.lineIndex + 1}/${total}</span>
           <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
         </div>
         <div class="dialogue-status" data-role="status">Repligi dinliyorsun...</div>
@@ -473,19 +280,10 @@ export class DubScene extends Phaser.Scene {
     this.turnBodyEl = node.querySelector('[data-role="turn-body"]') as HTMLElement;
     this.turnRecordBtn = recordBtn;
 
-    // Script gercek bir ses klibine dayaniyorsa (bkz. dub.py
-    // DubScript.audio_url) TTS yerine o klibin ilgili saniye araligini
-    // calariz - orijinal aktorun sesini duyup onu tekrar etmek, sentezlenmis
-    // bir sesten daha gercekci bir "Listen & Repeat" deneyimi verir.
-    const playSegment = (): Promise<void> => {
-      if (audioUrl !== undefined && startSeconds !== undefined) {
-        return this.playAudioSegment(audioUrl, startSeconds, endSeconds ?? null);
-      }
-      return this.playLine(text, voice);
-    };
+    const playReference = (): Promise<void> => this.playReferenceForLine(line, 1);
 
     replayBtn.addEventListener("click", () => {
-      void playSegment();
+      void playReference();
     });
     recordBtn.addEventListener("click", () => {
       if (this.isRecording) {
@@ -495,18 +293,19 @@ export class DubScene extends Phaser.Scene {
       }
     });
 
-    void playSegment().then(() => {
+    void playReference().then(() => {
       recordBtn.disabled = false;
       this.setStatus("Simdi sirayla tekrar et - kaydi baslat.");
     });
   }
 
-  private async playLine(text: string, voice: string): Promise<void> {
+  private async playLine(text: string, voice: string, volume = 1): Promise<void> {
     this.stopCurrentAudio();
     try {
       const blob = await this.api.synthesizeLine(text, voice);
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
+      audio.volume = volume;
       this.currentAudio = audio;
       await new Promise<void>((resolve) => {
         audio.addEventListener("ended", () => resolve(), { once: true });
@@ -522,15 +321,15 @@ export class DubScene extends Phaser.Scene {
   /**
    * Gercek bir ses klibinden (game/public/assets/dub/... - Vite tarafindan
    * servis edilir, orn. Charade (1963)'ten cikarilmis SADECE SES dosyasi)
-   * [start, end) araligini oynatir. "Sunucuda video/ses render/birlestirme
-   * yok" ilkesi burada da gecerli: klip donusturulmuyor/kesilmiyor, sadece
-   * tarayicida oynatma pozisyonu kontrol ediliyor (bkz. dub.py dosya basi
-   * mimari notu) - playLine()'daki TTS akisiyla ayni <audio> mekanizmasi,
-   * tek fark baslangic noktasini secip bitince durdurmasi.
+   * [start, end) araligini oynatir. Sunucu klibi hicbir sekilde
+   * kesmiyor/donusturmuyor (ffmpeg yok) - sadece tarayicida oynatma
+   * pozisyonu/ses seviyesi kontrol ediliyor (bkz. dub.py dosya basi mimari
+   * notu).
    */
-  private async playAudioSegment(url: string, start: number, end: number | null): Promise<void> {
+  private async playAudioSegment(url: string, start: number, end: number | null, volume = 1): Promise<void> {
     this.stopCurrentAudio();
     const audio = new Audio(url);
+    audio.volume = volume;
     this.currentAudio = audio;
 
     await new Promise<void>((resolve) => {
@@ -612,8 +411,10 @@ export class DubScene extends Phaser.Scene {
   }
 
   private async submitRecording(): Promise<void> {
-    const lineId = this.currentLineId;
-    if (lineId === null) return;
+    const script = this.script;
+    if (!script) return;
+    const line = script.lines[this.lineIndex];
+    if (!line) return; // guvenlik amacli - normalde bu index her zaman gecerli
     const recordedType = this.mediaRecorder?.mimeType || "audio/webm";
     const blob = new Blob(this.audioChunks, { type: recordedType });
     this.audioChunks = [];
@@ -623,14 +424,14 @@ export class DubScene extends Phaser.Scene {
     }
     this.setStatus("Degerlendiriliyor...");
     try {
-      const result = await this.api.scoreLine(this.roomCode, lineId, this.playerName, blob);
-      this.renderLineFeedback(result.words, result.accuracy_percent);
+      const result = await this.api.scoreLine(script.id, line.id, blob);
+      this.renderLineFeedback(line, result.words, result.accuracy_percent);
     } catch (error: unknown) {
       this.setStatus(this.describeError(error, "Degerlendirme basarisiz oldu."));
     }
   }
 
-  private renderLineFeedback(words: WordVerdict[], accuracy: number): void {
+  private renderLineFeedback(line: DubScriptLine, words: WordVerdict[], accuracy: number): void {
     const body = this.turnBodyEl;
     if (!body) return;
     const wordsHtml = words
@@ -643,54 +444,74 @@ export class DubScene extends Phaser.Scene {
     `;
     const continueBtn = body.querySelector('[data-action="continue"]') as HTMLButtonElement;
     continueBtn.addEventListener("click", () => {
-      this.ws?.send(JSON.stringify({ type: "line_done" }));
-      this.setStatus("Sonraki replik bekleniyor...");
       continueBtn.disabled = true;
+      this.summary.push({ line, words, accuracy_percent: accuracy });
+      this.lineIndex += 1;
+      this.advanceLine();
     });
     this.setStatus("Tamamlandi.");
   }
 
   // ---------------------------------------------------------------------
-  // Ekran 4b: sira baskasinda (bekleme - metin/ses HIC gonderilmez)
+  // Ekran 2b: sira baskasinda - orijinal ses tam seviyede calar
   // ---------------------------------------------------------------------
 
-  private renderTurnForOther(): void {
-    this.screen = "turn";
-    const speakerPlayer = this.players.find((p) => p.character === this.currentLineSpeaker);
-    const who = speakerPlayer ? `${speakerPlayer.name} (${this.currentLineSpeaker})` : this.currentLineSpeaker;
-
-    this.mount(`
+  private renderOtherTurn(line: DubScriptLine): void {
+    this.screen = "other-turn";
+    const total = this.script!.lines.length;
+    const node = this.mount(`
       <div class="dialogue-panel dub-panel">
         <div class="dialogue-header">
-          <strong>Sahne devam ediyor</strong>
-          <span>Replik ${this.currentLineIndex + 1}/${this.currentTotalLines}</span>
+          <strong>${this.escapeHtml(line.speaker)} konusuyor</strong>
+          <span>Replik ${this.lineIndex + 1}/${total}</span>
           <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
         </div>
-        <div class="dialogue-status" data-role="status">${this.escapeHtml(who)} konusuyor...</div>
-        <div class="dub-body">
-          <div class="dub-turn-indicator">🎭 Sira sende degil - bekle.</div>
+        <div class="dialogue-status" data-role="status">Dinliyorsun...</div>
+        <div class="dub-body dub-col">
+          <div class="dub-turn-indicator">"${this.escapeHtml(line.text)}"</div>
+          <div class="dub-row">
+            <button type="button" class="dub-btn secondary" data-action="replay">Tekrar Dinle</button>
+            <button type="button" class="dub-btn" data-action="continue" disabled>Devam Et</button>
+          </div>
         </div>
       </div>
     `);
+
+    const replayBtn = node.querySelector('[data-action="replay"]') as HTMLButtonElement;
+    const continueBtn = node.querySelector('[data-action="continue"]') as HTMLButtonElement;
+
+    const playReference = (): Promise<void> => this.playReferenceForLine(line, 1);
+
+    replayBtn.addEventListener("click", () => {
+      void playReference();
+    });
+    continueBtn.addEventListener("click", () => {
+      this.lineIndex += 1;
+      this.advanceLine();
+    });
+
+    void playReference().then(() => {
+      continueBtn.disabled = false;
+      this.setStatus("Devam etmek icin butona bas.");
+    });
   }
 
   // ---------------------------------------------------------------------
-  // Ekran 5: bitis - sahneyi izle (renkli altyazi + herkesin sesi)
+  // Ekran 3: bitis - kendi repliklerinin puanlari + tum sahneyi dinle
   // ---------------------------------------------------------------------
 
-  private renderFinished(summary: FinishedSummaryLine[]): void {
+  private renderFinished(): void {
     this.screen = "finished";
     this.playbackAbort = true;
 
-    const linesHtml = summary
-      .map((line) => {
-        const wordsHtml = line.words
+    const linesHtml = this.summary
+      .map((entry) => {
+        const wordsHtml = entry.words
           .map((w) => `<span class="dub-word ${w.correct ? "correct" : "wrong"}">${this.escapeHtml(w.word)}</span>`)
           .join("");
         return `
-          <div class="dub-summary-line" data-line-id="${line.line_id}">
-            <strong>${this.escapeHtml(line.speaker)}</strong> (${this.escapeHtml(line.player_name)}) - %${line.accuracy_percent}
-            <button type="button" class="dub-btn secondary" data-play-line="${line.line_id}" style="float:right; min-width:auto; padding:4px 10px; height:auto;">▶</button>
+          <div class="dub-summary-line">
+            <strong>${this.escapeHtml(entry.line.speaker)}</strong> - %${entry.accuracy_percent}
             <div>${wordsHtml}</div>
           </div>
         `;
@@ -701,84 +522,46 @@ export class DubScene extends Phaser.Scene {
       <div class="dialogue-panel dub-panel">
         <div class="dialogue-header">
           <strong>Sahne tamamlandi!</strong>
-          <span>Kim ne dogru soyledi?</span>
+          <span>${this.escapeHtml(this.myCharacter)} olarak nasil gitti?</span>
           <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
         </div>
-        <div class="dialogue-status" data-role="status">Tek tek dinleyebilir ya da tum sahneyi izleyebilirsin.</div>
-        <div class="dub-body" data-role="summary-list">${linesHtml}</div>
+        <div class="dialogue-status" data-role="status">Kendi repliklerini asagida gorebilir ya da tum sahneyi dinleyebilirsin.</div>
+        <div class="dub-body" data-role="summary-list">${linesHtml || "<p>Kayitli replik yok.</p>"}</div>
         <div class="dub-row" style="margin-top:10px;">
-          <button type="button" class="dub-btn" data-action="play-all">Tum Sahneyi Izle</button>
-          <button type="button" class="dub-btn secondary" data-action="new-room">Yeni Oda</button>
+          <button type="button" class="dub-btn" data-action="play-all">Tum Sahneyi Dinle</button>
+          <button type="button" class="dub-btn secondary" data-action="restart">Yeniden Basla</button>
         </div>
       </div>
     `);
 
-    const list = node.querySelector('[data-role="summary-list"]') as HTMLElement;
-    list.addEventListener("click", (event) => {
-      const target = (event.target as HTMLElement).closest("[data-play-line]") as HTMLElement | null;
-      if (!target) return;
-      const lineId = Number(target.dataset["playLine"]);
-      if (!Number.isFinite(lineId)) return;
-      this.playRecordedLine(lineId);
-    });
-
     const playAllBtn = node.querySelector('[data-action="play-all"]') as HTMLButtonElement;
     playAllBtn.addEventListener("click", () => {
-      void this.playFullScene(summary);
+      void this.playFullScene();
     });
 
-    const newRoomBtn = node.querySelector('[data-action="new-room"]') as HTMLButtonElement;
-    newRoomBtn.addEventListener("click", () => {
-      this.ws?.send(JSON.stringify({ type: "leave" }));
-      this.ws?.close();
-      this.ws = null;
-      this.hasJoined = false;
-      this.resetRoomState();
+    const restartBtn = node.querySelector('[data-action="restart"]') as HTMLButtonElement;
+    restartBtn.addEventListener("click", () => {
+      this.resetState();
       this.renderStart();
     });
   }
 
-  private resetRoomState(): void {
-    this.roomCode = "";
-    this.playerName = "";
-    this.pendingCharacter = "";
-    this.myCharacter = "";
-    this.isHost = false;
-    this.characters = [];
-    this.hostName = "";
-    this.players = [];
-    this.currentLineId = null;
-    this.currentLineSpeaker = "";
-  }
-
-  private playRecordedLine(lineId: number): boolean {
-    this.stopCurrentAudio();
-    const url = this.api.lineAudioUrl(this.roomCode, lineId);
-    const audio = new Audio(url);
-    this.currentAudio = audio;
-    audio.play().catch(() => undefined);
-    return true;
-  }
-
-  private async playFullScene(summary: FinishedSummaryLine[]): Promise<void> {
+  /**
+   * Tum sahneyi bastan sona, repliklerin sirasina gore tek tek calar.
+   * SADECE oyuncunun sectigi karakterin repliklerinde ses DUCK_VOLUME'a
+   * kisilir (tamamen susmuyor) - digerleri tam ses seviyesinde kalir.
+   */
+  private async playFullScene(): Promise<void> {
+    const script = this.script;
+    if (!script) return;
     this.playbackAbort = false;
-    for (const line of summary) {
+    for (const line of script.lines) {
       if (this.playbackAbort) return;
-      this.setStatus(`Simdi calan: ${line.speaker} (${line.player_name})`);
-      await this.playAndWait(this.api.lineAudioUrl(this.roomCode, line.line_id));
-      await new Promise((resolve) => window.setTimeout(resolve, 350));
+      const isMine = line.speaker === this.myCharacter;
+      this.setStatus(`Simdi calan: ${line.speaker}${isMine ? " (senin replik - sesi kisildi)" : ""}`);
+      await this.playReferenceForLine(line, isMine ? DUCK_VOLUME : 1);
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
     }
     if (!this.playbackAbort) this.setStatus("Sahne bitti.");
-  }
-
-  private async playAndWait(url: string): Promise<void> {
-    this.stopCurrentAudio();
-    const audio = new Audio(url);
-    this.currentAudio = audio;
-    await new Promise<void>((resolve) => {
-      audio.addEventListener("ended", () => resolve(), { once: true });
-      audio.addEventListener("error", () => resolve(), { once: true });
-      audio.play().catch(() => resolve());
-    });
   }
 }

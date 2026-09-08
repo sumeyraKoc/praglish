@@ -123,10 +123,6 @@
       font-size: 14px;
     }
     .dub-char-btn:hover { border-color: #78dce8; }
-    .dub-char-btn.taken { opacity: 0.4; cursor: not-allowed; }
-    .dub-char-btn.taken:hover { border-color: #5d4c72; }
-    .dub-player-list { list-style: none; margin: 0; padding: 0; font-size: 13px; color: #cfc4e3; }
-    .dub-player-list li { padding: 2px 0; }
     .dub-turn-indicator { text-align: center; font-size: 16px; margin: 14px 0; color: #fff; }
     .dub-word { margin-right: 5px; }
     .dub-word.correct { color: #8ee89b; }
@@ -156,23 +152,14 @@
   <div id="game"></div>
   <button type="button" id="dub-launcher">🎬 Sahneyi Seslendir</button>
   <script>
-    // Oyun "localhost:5173" DISINDA bir adresten aciliyorsa (orn. bir
-    // arkadasin ayni WiFi/LAN uzerinden senin bilgisayarinin IP'siyle
-    // "http://192.168.x.x:5173" seklinde acmasi - coklu oyunculu "Sahneyi
-    // Seslendir" odasina katilmak icin gerekli), PraglishApiClient.ts ve
-    // DubApiClient.ts'deki varsayilan "http://localhost:8000" o kisinin
-    // KENDI bilgisayarina isaret eder ve calismaz. Bu yuzden ayni host'u
-    // (IP/domain), API'nin calistigi 8000 portuyla otomatik kullaniyoruz -
-    // localhost'ta hicbir sey degismiyor, sadece LAN erisiminde devreye
-    // giriyor. (Ayrica api'nin CORS_ORIGINS'ine bu adresi eklemen gerekir -
-    // bkz. .env / README.) Bir de acik ?api=... parametresi var - ngrok
-    // gibi bir tunel kullanirsan (mikrofon icin HTTPS gerektiginde, bkz.
-    // README "Farkli cihazdan test") oyun ve API FARKLI adreslerde olur,
-    // o zaman linke "?api=https://xxxx.ngrok-free.app" ekleyip paylas.
-    const apiParam = new URLSearchParams(location.search).get("api");
-    if (apiParam) {
-      window.PRAGLISH_API_BASE_URL = apiParam;
-    } else if (location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    // Oyun "localhost:5173" DISINDA bir adresten aciliyorsa (orn. ayni
+    // WiFi/LAN'daki baska bir cihazdan senin bilgisayarinin IP'siyle
+    // "http://192.168.x.x:5173" seklinde acilmasi), PraglishApiClient.ts ve
+    // DubApiClient.ts'deki varsayilan "http://localhost:8000" o cihaza
+    // isaret etmez ve calismaz. Bu yuzden ayni host'u (IP/domain), API'nin
+    // calistigi 8000 portuyla otomatik kullaniyoruz - localhost'ta hicbir
+    // sey degismiyor, sadece LAN erisiminde devreye giriyor.
+    if (location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
       window.PRAGLISH_API_BASE_URL = `http://${location.hostname}:8000`;
     }
   </script>

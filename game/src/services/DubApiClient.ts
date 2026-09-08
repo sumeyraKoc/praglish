@@ -3,16 +3,20 @@
  *
  * PraglishApiClient.ts'e kasitli olarak DAHIL EDILMEDI: o dosya tek
  * oyunculu oturum/kelime akisina (guest credentials, session_id, userId)
- * kenetli; bu ozellik ise oda kodu + oyuncu adiyla calisan, veritabani
+ * kenetli; bu ozellik ise tamamen kendi ekraninda calisan, veritabani
  * OLMAYAN ayri bir akis (bkz. api/routes/dub.py dosya basi aciklamasi).
  * Iki farkli sorumlulugu tek dosyada tutmak yerine ayri servis dosyasi
  * seciyoruz - projedeki mevcut "her ozellik kendi servisinde" alaniyla
  * tutarli.
+ *
+ * NOT: bu ozellik ONCE cok oyunculu (oda kur/katil, WebSocket) olarak
+ * yapilmisti; proje kararlastirdi ki su an icin TEK KISILIK ilerlesin -
+ * bu yuzden burada oda/soket YOK (coklu oyuncu surumune git gecmisinden
+ * bakilabilir).
  */
 
 const runtimeWindow = window as typeof window & { PRAGLISH_API_BASE_URL?: string };
 const API_BASE_URL = (runtimeWindow.PRAGLISH_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
-const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws");
 
 export class DubApiError extends Error {
   constructor(message: string, public readonly status?: number) {
@@ -26,6 +30,12 @@ export interface DubScriptLine {
   speaker: string;
   text: string;
   voice: string;
+  // Sadece script gercek bir ses klibine dayaniyorsa (bkz. DubScript.audio_url)
+  // dolu gelir - o zaman frontend TTS yerine bu ses dosyasinin
+  // [start_seconds, end_seconds) araligini calar. end_seconds null ise klip
+  // o repligin sonuna kadar (dogal bitisine kadar) oynatilmali.
+  start_seconds?: number | null;
+  end_seconds?: number | null;
 }
 
 export interface DubScript {
@@ -33,21 +43,11 @@ export interface DubScript {
   title: string;
   characters: string[];
   lines: DubScriptLine[];
-}
-
-export interface CreateRoomResponse {
-  room_code: string;
-  script: DubScript;
-}
-
-export interface RoomInfo {
-  room_code: string;
-  script_id: string;
-  script_title: string;
-  characters: string[];
-  taken_characters: string[];
-  state: "lobby" | "playing" | "finished";
-  host_name: string;
+  // Doluysa (orn. "/assets/dub/charade-44.m4a") repliklerin sesi gercek bir
+  // klipten geliyor demektir - bu yol OYUNUN (game) origin'inden servis
+  // edilir, API_BASE_URL ile birlestirilmemeli. Bos ise repliklerin sesi
+  // /api/speech/tts ile o an sentezlenir.
+  audio_url?: string | null;
 }
 
 export interface WordVerdict {
@@ -62,93 +62,19 @@ export interface ScoreLineResponse {
   accuracy_percent: number;
 }
 
-/** Sunucudan gelen WebSocket mesajlarinin (bkz. dub.py) client tarafi sekli. */
-export type DubServerMessage =
-  | {
-      type: "room_state";
-      state: "lobby" | "playing" | "finished";
-      host_name: string;
-      characters: string[];
-      players: { name: string; character: string }[];
-    }
-  | {
-      type: "turn";
-      line_index: number;
-      total_lines: number;
-      line_id: number;
-      speaker: string;
-      for_you: boolean;
-      text?: string;
-      voice?: string;
-      // Sadece script gercek bir ses klibine dayaniyorsa (bkz. dub.py
-      // DubScript.audio_url) dolu gelir - o zaman frontend TTS yerine bu
-      // ses dosyasinin [start_seconds, end_seconds) araligini calar.
-      // end_seconds null ise klip o repliğin sonuna kadar (dogal bitisine
-      // kadar) oynatilmali.
-      audio_url?: string;
-      start_seconds?: number;
-      end_seconds?: number | null;
-    }
-  | {
-      type: "finished";
-      summary: {
-        line_id: number;
-        speaker: string;
-        player_name: string;
-        expected: string;
-        transcript: string;
-        accuracy_percent: number;
-        words: WordVerdict[];
-      }[];
-    }
-  | { type: "error"; detail: string };
-
 export class DubApiClient {
   public async listScripts(): Promise<DubScript[]> {
     return this.getJson<DubScript[]>("/api/dub/scripts");
   }
 
-  public async createRoom(hostName: string, scriptId = "sample-cafe"): Promise<CreateRoomResponse> {
-    return this.postJson<CreateRoomResponse>("/api/dub/rooms", {
-      host_name: hostName,
-      script_id: scriptId,
-    });
-  }
-
-  /**
-   * Var olan bir odaya KOD ILE katilan oyuncunun hangi karakterleri secebilecegini
-   * ogrenmesi icin - host'un o odayi hangi script'le actigini dogrudan sorar,
-   * /api/dub/scripts listesinin ilk elemanini tahmin etmeye gerek birakmaz
-   * (birden fazla script oldugunda bu tahmin yanlis cikiyordu).
-   */
-  public async getRoomInfo(roomCode: string): Promise<RoomInfo> {
-    return this.getJson<RoomInfo>(`/api/dub/rooms/${roomCode}`);
-  }
-
-  /**
-   * Oda WebSocket'ine baglanir. Baglanti acildiktan sonra "join" mesaji
-   * GONDERILMEDEN oyuncu odaya eklenmez (bkz. dub.py room_socket) - yani
-   * bu metod sadece soket acar, DubScene karakter secince join mesajini
-   * ayrica yollar.
-   */
-  public connectRoom(roomCode: string): WebSocket {
-    return new WebSocket(`${WS_BASE_URL}/api/dub/rooms/${roomCode}/ws`);
-  }
-
-  public async scoreLine(
-    roomCode: string,
-    lineId: number,
-    playerName: string,
-    audioBlob: Blob,
-  ): Promise<ScoreLineResponse> {
+  public async scoreLine(scriptId: string, lineId: number, audioBlob: Blob): Promise<ScoreLineResponse> {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 30_000);
     try {
       const formData = new FormData();
       formData.append("audio", audioBlob, "recording.webm");
-      const query = new URLSearchParams({ player_name: playerName });
       const response = await fetch(
-        `${API_BASE_URL}/api/dub/rooms/${roomCode}/lines/${lineId}/score?${query.toString()}`,
+        `${API_BASE_URL}/api/dub/scripts/${scriptId}/lines/${lineId}/score`,
         { method: "POST", body: formData, signal: controller.signal },
       );
       if (!response.ok) {
@@ -193,26 +119,8 @@ export class DubApiClient {
     }
   }
 
-  /** Bir oyuncunun kaydettigi replik sesini (baskalarinin "sahneyi izle" adiminda calmasi icin) getirir. */
-  public lineAudioUrl(roomCode: string, lineId: number): string {
-    return `${API_BASE_URL}/api/dub/rooms/${roomCode}/lines/${lineId}/audio`;
-  }
-
   private async getJson<T>(path: string): Promise<T> {
     const response = await fetch(`${API_BASE_URL}${path}`);
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
-      throw new DubApiError(payload?.detail ?? `Request failed (${response.status})`, response.status);
-    }
-    return (await response.json()) as T;
-  }
-
-  private async postJson<T>(path: string, body: object): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
       throw new DubApiError(payload?.detail ?? `Request failed (${response.status})`, response.status);

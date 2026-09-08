@@ -58,13 +58,14 @@ yeterli, geri kalan mekanizma degismeden calisir.
 import difflib
 import logging
 import random
+import secrets
 import string
 import time
 from dataclasses import dataclass, field
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -252,6 +253,7 @@ class Player:
     websocket: WebSocket
     name: str
     character: str
+    token: str
 
 
 @dataclass
@@ -265,6 +267,7 @@ class RecordedLine:
     words: list[dict]
     audio_bytes: bytes
     content_type: str
+    player_token: str
 
 
 @dataclass
@@ -272,6 +275,7 @@ class Room:
     code: str
     script: DubScript
     host_name: str
+    host_token: str
     players: dict[str, Player] = field(default_factory=dict)  # key: oyuncu adi
     state: Literal["lobby", "playing", "finished"] = "lobby"
     current_line_index: int = -1
@@ -298,6 +302,7 @@ class CreateRoomRequest(BaseModel):
 class CreateRoomResponse(BaseModel):
     room_code: str
     script: DubScript
+    player_token: str
 
 
 @router.post("/rooms", response_model=CreateRoomResponse)
@@ -311,9 +316,15 @@ def create_room(payload: CreateRoomRequest) -> CreateRoomResponse:
         raise HTTPException(status_code=404, detail=f"Unknown script_id: {payload.script_id}")
 
     code = _generate_unique_room_code()
-    ROOMS[code] = Room(code=code, script=script, host_name=host_name)
+    host_token = secrets.token_urlsafe(32)
+    ROOMS[code] = Room(
+        code=code,
+        script=script,
+        host_name=host_name,
+        host_token=host_token,
+    )
     logger.info("Dub room %s created by %s (script=%s)", code, host_name, script.id)
-    return CreateRoomResponse(room_code=code, script=script)
+    return CreateRoomResponse(room_code=code, script=script, player_token=host_token)
 
 
 class RoomInfoResponse(BaseModel):
@@ -454,8 +465,27 @@ async def room_socket(websocket: WebSocket, room_code: str) -> None:
                 if character not in room.script.characters:
                     await _send_safe(websocket, {"type": "error", "detail": "invalid character"})
                     continue
+                if room.state != "lobby":
+                    await _send_safe(websocket, {"type": "error", "detail": "room is not accepting players"})
+                    continue
+                if player is not None:
+                    await _send_safe(websocket, {"type": "error", "detail": "socket has already joined"})
+                    continue
+                if name in room.players:
+                    await _send_safe(websocket, {"type": "error", "detail": "name is already taken"})
+                    continue
+
+                supplied_token = str(message.get("player_token") or "")
+                if name == room.host_name:
+                    if not secrets.compare_digest(supplied_token, room.host_token):
+                        await _send_safe(websocket, {"type": "error", "detail": "host name is reserved"})
+                        continue
+                    player_token = room.host_token
+                else:
+                    player_token = secrets.token_urlsafe(32)
+
                 taken_by = next(
-                    (p for p in room.players.values() if p.character == character and p.name != name),
+                    (p for p in room.players.values() if p.character == character),
                     None,
                 )
                 if taken_by is not None:
@@ -463,12 +493,20 @@ async def room_socket(websocket: WebSocket, room_code: str) -> None:
                         websocket, {"type": "error", "detail": f"'{character}' is already taken"}
                     )
                     continue
-                player = Player(websocket=websocket, name=name, character=character)
+                player = Player(
+                    websocket=websocket,
+                    name=name,
+                    character=character,
+                    token=player_token,
+                )
                 room.players[name] = player
+                # Token yalnizca kendisini alan socket'e gider; oda durumunda
+                # veya broadcast mesajlarinda asla paylasilmaz.
+                await _send_safe(websocket, {"type": "joined", "player_token": player_token})
                 await _broadcast_room_state(room)
 
             elif msg_type == "start":
-                if player is None or player.name != room.host_name:
+                if player is None or not secrets.compare_digest(player.token, room.host_token):
                     await _send_safe(websocket, {"type": "error", "detail": "only the host can start"})
                     continue
                 if room.state != "lobby":
@@ -493,8 +531,17 @@ async def room_socket(websocket: WebSocket, room_code: str) -> None:
                 if room.state != "playing" or player is None:
                     continue
                 current_line = room.script.lines[room.current_line_index]
+                completed_line_id = message.get("line_id")
+                # line_id eskiyse bu ayni mesajin tekraridir. Ozellikle ayni
+                # karakterin art arda iki repligi oldugunda ikinciyi atlamasin.
+                if completed_line_id != current_line.id:
+                    continue
                 if player.character != current_line.speaker:
                     continue  # sirasi olmayan biri bildirmis - yoksay
+                recording = room.recordings.get(current_line.id)
+                if recording is None or not secrets.compare_digest(recording.player_token, player.token):
+                    await _send_safe(websocket, {"type": "error", "detail": "record this line before continuing"})
+                    continue
                 room.current_line_index += 1
                 if room.current_line_index >= len(room.script.lines):
                     room.state = "finished"
@@ -572,8 +619,8 @@ def _score_transcript(*, expected: str, actual: str) -> tuple[list[WordVerdict],
 async def score_line(
     room_code: str,
     line_id: int,
-    player_name: str,
     audio: UploadFile = File(...),
+    player_token: str = Header(..., alias="X-Player-Token"),
 ) -> ScoreLineResponse:
     room = ROOMS.get(room_code)
     if room is None:
@@ -581,6 +628,21 @@ async def score_line(
     line = next((l for l in room.script.lines if l.id == line_id), None)
     if line is None:
         raise HTTPException(status_code=404, detail="Line not found")
+    if room.state != "playing" or room.current_line_index < 0:
+        raise HTTPException(status_code=409, detail="Room is not playing")
+
+    current_line = room.script.lines[room.current_line_index]
+    if current_line.id != line_id:
+        raise HTTPException(status_code=409, detail="This is not the active line")
+
+    player = next(
+        (candidate for candidate in room.players.values() if secrets.compare_digest(candidate.token, player_token)),
+        None,
+    )
+    if player is None:
+        raise HTTPException(status_code=403, detail="Invalid player token")
+    if player.character != current_line.speaker:
+        raise HTTPException(status_code=403, detail="It is not this player's turn")
 
     audio_bytes = await audio.read()
     if not audio_bytes:
@@ -611,13 +673,14 @@ async def score_line(
     room.recordings[line.id] = RecordedLine(
         line_id=line.id,
         speaker=line.speaker,
-        player_name=player_name.strip()[:24] or "?",
+        player_name=player.name,
         transcript=stt_result.text,
         expected=line.text,
         accuracy_percent=accuracy,
         words=[w.model_dump() for w in words],
         audio_bytes=audio_bytes,
         content_type=audio.content_type or "audio/webm",
+        player_token=player.token,
     )
 
     return ScoreLineResponse(

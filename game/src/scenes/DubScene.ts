@@ -56,6 +56,7 @@ export class DubScene extends Phaser.Scene {
 
   private roomCode = "";
   private playerName = "";
+  private playerToken = "";
   private pendingCharacter = "";
   private myCharacter = "";
   private isHost = false;
@@ -132,9 +133,9 @@ export class DubScene extends Phaser.Scene {
     this.panel = null;
   }
 
-  private exitToLibrary(): void {
+  private exitToStudio(): void {
     this.teardown();
-    this.scene.start("LibraryScene");
+    this.scene.start("StudioScene");
   }
 
   private setStatus(text: string, isError = false): void {
@@ -150,7 +151,7 @@ export class DubScene extends Phaser.Scene {
     const node = dom.node as HTMLElement;
     this.statusEl = node.querySelector('[data-role="status"]');
     const closeBtn = node.querySelector('[data-action="exit"]');
-    closeBtn?.addEventListener("click", () => this.exitToLibrary());
+    closeBtn?.addEventListener("click", () => this.exitToStudio());
     return node;
   }
 
@@ -217,6 +218,7 @@ export class DubScene extends Phaser.Scene {
       const response = await this.api.createRoom(name, scriptId);
       this.playerName = name;
       this.roomCode = response.room_code;
+      this.playerToken = response.player_token;
       this.isHost = true;
       this.characters = response.script.characters;
       this.hostName = name;
@@ -240,18 +242,17 @@ export class DubScene extends Phaser.Scene {
     this.setStatus("Oda bilgisi aliniyor...");
     try {
       const info = await this.api.getRoomInfo(code);
+      if (info.state !== "lobby") {
+        this.setStatus("Bu oda artik oyuncu kabul etmiyor.", true);
+        return;
+      }
       this.playerName = name;
       this.roomCode = code;
+      this.playerToken = "";
       this.isHost = false;
       this.characters = info.characters;
       this.hostName = info.host_name;
       this.renderCharacterPick(info.taken_characters);
-      if (info.state !== "lobby") {
-        // renderCharacterPick() az once statusEl'i yeni panele bagladi -
-        // uyariyi bundan SONRA basmaliyiz, yoksa panelin kendi varsayilan
-        // metniyle uzerine yazilir.
-        this.setStatus("Uyari: bu oda zaten baslamis ya da bitmis.", true);
-      }
     } catch (error: unknown) {
       this.setStatus(this.describeError(error, "Oda bulunamadi. Kodu kontrol et."), true);
     }
@@ -339,7 +340,12 @@ export class DubScene extends Phaser.Scene {
 
   private sendJoin(character: string): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ type: "join", name: this.playerName, character }));
+    this.ws.send(JSON.stringify({
+      type: "join",
+      name: this.playerName,
+      character,
+      ...(this.playerToken ? { player_token: this.playerToken } : {}),
+    }));
   }
 
   private handleSocketClose(event: CloseEvent): void {
@@ -364,6 +370,10 @@ export class DubScene extends Phaser.Scene {
     }
 
     switch (message.type) {
+      case "joined": {
+        this.playerToken = message.player_token;
+        break;
+      }
       case "room_state": {
         this.hostName = message.host_name;
         if (this.characters.length === 0) this.characters = message.characters;
@@ -623,7 +633,7 @@ export class DubScene extends Phaser.Scene {
     }
     this.setStatus("Degerlendiriliyor...");
     try {
-      const result = await this.api.scoreLine(this.roomCode, lineId, this.playerName, blob);
+      const result = await this.api.scoreLine(this.roomCode, lineId, this.playerToken, blob);
       this.renderLineFeedback(result.words, result.accuracy_percent);
     } catch (error: unknown) {
       this.setStatus(this.describeError(error, "Degerlendirme basarisiz oldu."));
@@ -643,7 +653,7 @@ export class DubScene extends Phaser.Scene {
     `;
     const continueBtn = body.querySelector('[data-action="continue"]') as HTMLButtonElement;
     continueBtn.addEventListener("click", () => {
-      this.ws?.send(JSON.stringify({ type: "line_done" }));
+      this.ws?.send(JSON.stringify({ type: "line_done", line_id: this.currentLineId }));
       this.setStatus("Sonraki replik bekleniyor...");
       continueBtn.disabled = true;
     });
@@ -741,6 +751,7 @@ export class DubScene extends Phaser.Scene {
   private resetRoomState(): void {
     this.roomCode = "";
     this.playerName = "";
+    this.playerToken = "";
     this.pendingCharacter = "";
     this.myCharacter = "";
     this.isHost = false;

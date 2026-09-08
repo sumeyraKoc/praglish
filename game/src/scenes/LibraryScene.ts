@@ -3,6 +3,7 @@ import { calculateDepth } from "../engine/DepthSort";
 import { gridToScreen, IsoConfig, screenToGrid } from "../engine/IsometricMath";
 import { findPath, PathfindingGrid } from "../engine/PathFinder";
 import { IsoAvatar } from "../entities/IsoAvatar";
+import { isTextEntryEvent } from "../engine/DomInputGuard";
 import {
   PraglishApiClient,
   TurnResponse,
@@ -132,13 +133,21 @@ export class LibraryScene extends Phaser.Scene {
         this.handleClickToWalk(pointer.worldX, pointer.worldY);
       }
     });
-    this.input.keyboard?.on("keydown-E", () => this.handleInteractKey());
-    this.input.keyboard?.on("keydown-ESC", () => {
+    this.input.keyboard?.on("keydown-E", (event: KeyboardEvent) => {
+      if (!isTextEntryEvent(event)) this.handleInteractKey();
+    });
+    this.input.keyboard?.on("keydown-ESC", (event: KeyboardEvent) => {
+      if (isTextEntryEvent(event)) return;
       this.closeDialogue();
       this.closeVocabPanel();
     });
-    this.input.keyboard?.on("keydown-B", () => {
+    this.input.keyboard?.on("keydown-B", (event: KeyboardEvent) => {
+      if (isTextEntryEvent(event)) return;
       if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("RoomScene");
+    });
+    this.input.keyboard?.on("keydown-S", (event: KeyboardEvent) => {
+      if (isTextEntryEvent(event)) return;
+      if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("StudioScene");
     });
   }
 
@@ -330,7 +339,7 @@ export class LibraryScene extends Phaser.Scene {
       fontSize: "22px",
       color: "#f2c879",
     }).setScrollFactor(0).setDepth(100000);
-    this.add.text(24, 54, "Zemine tıkla · Lina'ya yaklaş ve E'ye bas · B: Bakery", {
+    this.add.text(24, 54, "Zemine tıkla · Lina'ya yaklaş ve E'ye bas · B: Bakery · S: Studio", {
       fontFamily: "Arial, sans-serif",
       fontSize: "15px",
       color: "#e1d9cb",

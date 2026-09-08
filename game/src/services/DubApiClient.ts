@@ -38,6 +38,7 @@ export interface DubScript {
 export interface CreateRoomResponse {
   room_code: string;
   script: DubScript;
+  player_token: string;
 }
 
 export interface RoomInfo {
@@ -64,6 +65,7 @@ export interface ScoreLineResponse {
 
 /** Sunucudan gelen WebSocket mesajlarinin (bkz. dub.py) client tarafi sekli. */
 export type DubServerMessage =
+  | { type: "joined"; player_token: string }
   | {
       type: "room_state";
       state: "lobby" | "playing" | "finished";
@@ -138,7 +140,7 @@ export class DubApiClient {
   public async scoreLine(
     roomCode: string,
     lineId: number,
-    playerName: string,
+    playerToken: string,
     audioBlob: Blob,
   ): Promise<ScoreLineResponse> {
     const controller = new AbortController();
@@ -146,10 +148,14 @@ export class DubApiClient {
     try {
       const formData = new FormData();
       formData.append("audio", audioBlob, "recording.webm");
-      const query = new URLSearchParams({ player_name: playerName });
       const response = await fetch(
-        `${API_BASE_URL}/api/dub/rooms/${roomCode}/lines/${lineId}/score?${query.toString()}`,
-        { method: "POST", body: formData, signal: controller.signal },
+        `${API_BASE_URL}/api/dub/rooms/${roomCode}/lines/${lineId}/score`,
+        {
+          method: "POST",
+          headers: { "X-Player-Token": playerToken },
+          body: formData,
+          signal: controller.signal,
+        },
       );
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { detail?: string } | null;

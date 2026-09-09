@@ -107,41 +107,49 @@ export class DubScene extends Phaser.Scene {
   // degistirilebilecek sekilde kasitli olarak kucuk ve izole tutuldu.
   // ---------------------------------------------------------------------
 
-  private static readonly PROGRESS_KEY = "praglish.dub.progress.v1";
+  private static readonly COMPLETION_KEY = "praglish.dub.completion.v1";
   private static readonly LAST_CHARACTER_KEY = "praglish.dub.lastCharacter.v1";
 
-  private loadProgressStore(): Record<string, Record<string, Record<number, number>>> {
+  /**
+   * Replik replik dogruluk yuzdesi zaten OYUN SIRASINDA (bkz.
+   * renderLineFeedback) aninda gosteriliyor - ayrica saklamaya gerek yok.
+   * Burada sadece bir karakterin TAMAMLANMIS bir turunun ORTALAMA
+   * dogrulugu tutulur (bkz. renderFinished) - seviye haritasindaki
+   * user-ikonlari kac REPLIK degil, kac KARAKTER oldugunu gosterir; bir
+   * karakter en az bir kez tamamlanmissa o ikon yesile doner ve altta o
+   * karakterin toplam yuzdesi yazar.
+   */
+  private loadCompletionStore(): Record<string, Record<string, number>> {
     try {
-      const raw = window.localStorage.getItem(DubScene.PROGRESS_KEY);
-      return raw ? (JSON.parse(raw) as Record<string, Record<string, Record<number, number>>>) : {};
+      const raw = window.localStorage.getItem(DubScene.COMPLETION_KEY);
+      return raw ? (JSON.parse(raw) as Record<string, Record<string, number>>) : {};
     } catch {
       return {};
     }
   }
 
-  private saveProgressStore(store: Record<string, Record<string, Record<number, number>>>): void {
+  private saveCompletionStore(store: Record<string, Record<string, number>>): void {
     try {
-      window.localStorage.setItem(DubScene.PROGRESS_KEY, JSON.stringify(store));
+      window.localStorage.setItem(DubScene.COMPLETION_KEY, JSON.stringify(store));
     } catch {
       // localStorage yoksa/dolu ise ilerleme kaydedilemez ama oyun akisi bozulmaz.
     }
   }
 
-  private getScriptProgress(scriptId: string, character: string): Record<number, number> {
-    const store = this.loadProgressStore();
+  private getCharacterCompletion(scriptId: string, character: string): number | null {
+    const store = this.loadCompletionStore();
     const scriptEntry = store[scriptId];
-    if (!scriptEntry) return {};
-    return scriptEntry[character] ?? {};
+    if (!scriptEntry) return null;
+    const value = scriptEntry[character];
+    return value === undefined ? null : value;
   }
 
-  private recordLineProgress(scriptId: string, character: string, lineId: number, accuracy: number): void {
-    const store = this.loadProgressStore();
+  private recordCharacterCompletion(scriptId: string, character: string, averageAccuracy: number): void {
+    const store = this.loadCompletionStore();
     const scriptEntry = store[scriptId] ?? {};
-    const charEntry = scriptEntry[character] ?? {};
-    charEntry[lineId] = accuracy;
-    scriptEntry[character] = charEntry;
+    scriptEntry[character] = averageAccuracy;
     store[scriptId] = scriptEntry;
-    this.saveProgressStore(store);
+    this.saveCompletionStore(store);
   }
 
   private getLastCharacter(scriptId: string, fallback: string): string {
@@ -168,10 +176,11 @@ export class DubScene extends Phaser.Scene {
   // ---------------------------------------------------------------------
   // Ekran 1: seviye (level) haritasi - script listesi artik acilir kutu
   // degil, zorluk puanina gore siralanmis numarali "seviye" dugmeleri
-  // olarak gosteriliyor (bkz. dub.py). Her dugmenin altinda, oyuncunun o
-  // scriptte en son sectigi karaktere ait kac replik varsa o kadar
-  // user-ikonu var; tamamlanmis olanlar yesil, kalanlar gri, en altta o
-  // karakterin o scriptteki ortalama dogruluk yuzdesi yaziyor.
+  // olarak gosteriliyor (bkz. dub.py). Her dugmenin altinda, sahnede kac
+  // KARAKTER varsa o kadar user-ikonu var (orn. Charade'de 2: Reggie,
+  // Bartholomew) - bir karakteri en az bir kez bastan sona tamamlamissa o
+  // ikon yesile doner; en altta en son secilen karakterin adi ve o
+  // karakterle alinan toplam (ortalama) dogruluk yuzdesi yaziyor.
   // ---------------------------------------------------------------------
 
   private renderLevelMap(): void {
@@ -209,26 +218,25 @@ export class DubScene extends Phaser.Scene {
   }
 
   private renderLevelItemHtml(script: DubScript, index: number): string {
-    const character = this.getLastCharacter(script.id, script.characters[0] ?? "");
-    const myLines = script.lines.filter((line) => line.speaker === character);
-    const progress = this.getScriptProgress(script.id, character);
-    const doneCount = myLines.filter((line) => progress[line.id] !== undefined).length;
-    const accuracies = myLines.map((line) => progress[line.id]).filter((v): v is number => v !== undefined);
-    const avgAccuracy = accuracies.length
-      ? Math.round(accuracies.reduce((sum, v) => sum + v, 0) / accuracies.length)
-      : 0;
+    const lastCharacter = this.getLastCharacter(script.id, script.characters[0] ?? "");
 
-    const iconsHtml = myLines
-      .map((line, i) => {
-        const done = progress[line.id] !== undefined;
+    const iconsHtml = script.characters
+      .map((character) => {
+        const done = this.getCharacterCompletion(script.id, character) !== null;
         return `
-          <svg class="dub-user-icon ${done ? "done" : ""}" viewBox="0 0 24 24" width="16" height="16" data-line="${i}">
+          <svg class="dub-user-icon ${done ? "done" : ""}" viewBox="0 0 24 24" width="20" height="20">
+            <title>${this.escapeHtml(character)}</title>
             <circle cx="12" cy="8" r="5"></circle>
             <path d="M4 22c0-4.4 3.6-8 8-8s8 3.6 8 8"></path>
           </svg>
         `;
       })
       .join("");
+
+    const lastCompletion = this.getCharacterCompletion(script.id, lastCharacter);
+    const percentLabel = lastCompletion !== null
+      ? `${this.escapeHtml(lastCharacter)} - %${lastCompletion}`
+      : "Henuz oynanmadi";
 
     const charsHtml = script.characters
       .map(
@@ -247,7 +255,7 @@ export class DubScene extends Phaser.Scene {
         </button>
         <div class="dub-level-title">${this.escapeHtml(script.title)}</div>
         <div class="dub-level-icons">${iconsHtml || '<span class="dub-level-percent">-</span>'}</div>
-        <div class="dub-level-percent">${doneCount}/${myLines.length} - %${avgAccuracy}</div>
+        <div class="dub-level-percent">${percentLabel}</div>
         <div class="dub-level-chars" data-role="chars" ${isExpanded ? "" : "hidden"}>${charsHtml}</div>
       </div>
     `;
@@ -572,7 +580,6 @@ export class DubScene extends Phaser.Scene {
     const continueBtn = body.querySelector('[data-action="continue"]') as HTMLButtonElement;
     continueBtn.addEventListener("click", () => {
       continueBtn.disabled = true;
-      if (this.script) this.recordLineProgress(this.script.id, this.myCharacter, line.id, accuracy);
       this.summary.push({ line, words, accuracy_percent: accuracy });
       this.lineIndex += 1;
       this.advanceLine();
@@ -631,6 +638,17 @@ export class DubScene extends Phaser.Scene {
   private renderFinished(): void {
     this.screen = "finished";
     this.playbackAbort = true;
+
+    // Sahne (bu karakter icin) bastan sona tamamlandi - seviye haritasindaki
+    // ilgili user-ikonunu yesile cevirmek ve altinda gosterilecek toplam
+    // yuzdeyi hesaplamak icin ortalama dogrulugu kaydet (bkz. dosya basi not:
+    // replik replik detay degil, sadece karakter+ortalama saklaniyor).
+    if (this.script && this.summary.length > 0) {
+      const averageAccuracy = Math.round(
+        this.summary.reduce((sum, entry) => sum + entry.accuracy_percent, 0) / this.summary.length,
+      );
+      this.recordCharacterCompletion(this.script.id, this.myCharacter, averageAccuracy);
+    }
 
     const linesHtml = this.summary
       .map((entry) => {

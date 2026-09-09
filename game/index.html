@@ -123,6 +123,64 @@
       font-size: 14px;
     }
     .dub-char-btn:hover { border-color: #78dce8; }
+
+    /* DubScene - Ekran 1: seviye (level) haritasi. Script'ler artik acilir
+       kutu degil, sunucunun zorluk puanina gore siraladigi (bkz.
+       api/routes/dub.py _compute_difficulty_score) numarali dugmeler
+       olarak gosteriliyor. Dugmenin altinda, oyuncunun o script'te en son
+       sectigi karaktere ait replik sayisi kadar user-ikonu var; tamamlanan
+       repliklerin ikonu yesile doner, kalanlar gri kalir, en altta o
+       karakterin o script'teki ortalama dogruluk yuzdesi yazar. Ilerleme
+       hesabi TARAYICIDA (localStorage) tutulur - bkz. DubScene.ts. */
+    .dub-panel--levels { width: 880px; height: 540px; }
+    .dub-levels {
+      display: flex;
+      align-items: center;
+      gap: 46px;
+      padding: 50px 30px 30px;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+    .dub-level-item {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      width: 128px;
+    }
+    .dub-level-item:nth-child(even) { margin-top: 56px; }
+    .dub-level-item:nth-child(odd) { margin-bottom: 56px; }
+    .dub-level-connector {
+      position: absolute;
+      top: 39px;
+      right: 100%;
+      width: 46px;
+      height: 0;
+      border-top: 3px dashed #5d4c72;
+    }
+    .dub-level-node {
+      width: 78px;
+      height: 78px;
+      border-radius: 50%;
+      border: 3px solid #78dce8;
+      background: linear-gradient(160deg, #2c2140, #171020);
+      color: #78dce8;
+      font: 800 26px "Arial Black", Arial, sans-serif;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4);
+      transition: transform 0.15s ease;
+    }
+    .dub-level-node:hover { transform: translateY(-4px) scale(1.05); }
+    .dub-level-node.active { background: #78dce8; color: #171020; }
+    .dub-level-title { font-size: 13px; color: #d8cfeb; text-align: center; max-width: 128px; }
+    .dub-level-icons { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; max-width: 128px; min-height: 16px; }
+    .dub-user-icon { fill: #3a2f52; flex: 0 0 auto; }
+    .dub-user-icon.done { fill: #8ee89b; }
+    .dub-level-percent { font-size: 12px; color: #a99dbd; white-space: nowrap; }
+    .dub-level-chars { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+
     .dub-turn-indicator { text-align: center; font-size: 16px; margin: 14px 0; color: #fff; }
     .dub-word { margin-right: 5px; }
     .dub-word.correct { color: #8ee89b; }

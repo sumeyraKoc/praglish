@@ -49,8 +49,8 @@ export class DubScene extends Phaser.Scene {
   private screen: Screen = "start";
 
   private availableScripts: DubScript[] = [];
-  private scriptSelectEl: HTMLSelectElement | null = null;
-  private charListEl: HTMLElement | null = null;
+  private levelsEl: HTMLElement | null = null;
+  private expandedScriptId: string | null = null;
 
   private script: DubScript | null = null;
   private myCharacter = "";
@@ -82,9 +82,13 @@ export class DubScene extends Phaser.Scene {
 
   private async loadScripts(): Promise<void> {
     try {
-      this.availableScripts = await this.api.listScripts();
+      const scripts = await this.api.listScripts();
+      // Backend zaten zorluk puanina gore siralayip level numarasi atiyor
+      // (bkz. dub.py _compute_difficulty_score) - burada sadece savunma
+      // amacli tekrar sirala (level alani beklenmedik sekilde gelirse).
+      this.availableScripts = [...scripts].sort((a, b) => a.level - b.level);
       if (this.screen !== "start") return; // kullanici cok hizli ilerlediyse bu ekran artik yok
-      this.populateScriptSelect();
+      this.renderLevelMap();
     } catch {
       this.availableScripts = [];
       if (this.screen === "start") {
@@ -93,24 +97,160 @@ export class DubScene extends Phaser.Scene {
     }
   }
 
-  private populateScriptSelect(): void {
-    if (!this.scriptSelectEl) return;
-    this.scriptSelectEl.innerHTML = this.availableScripts
-      .map((s) => `<option value="${this.escapeHtml(s.id)}">${this.escapeHtml(s.title)}</option>`)
-      .join("");
-    this.refreshCharacterButtons();
+  // ---------------------------------------------------------------------
+  // Ilerleme kaydi (localStorage) - henuz hesap/login sistemi olmadigi
+  // icin (proje karari: "en son islemimiz" login/signup) ilerleme
+  // TARAYICIDA, cihaza ozel tutulur. Script degistirmeden/karakter
+  // degistirmeden once bkz. dosya basi not: coklu oyuncu/hesap sistemi
+  // eklendiginde bu localStorage katmani sunucu tarafli bir progress
+  // tablosuyla (bkz. api/models/models.py VocabularyProgress ornegi) 1:1
+  // degistirilebilecek sekilde kasitli olarak kucuk ve izole tutuldu.
+  // ---------------------------------------------------------------------
+
+  private static readonly PROGRESS_KEY = "praglish.dub.progress.v1";
+  private static readonly LAST_CHARACTER_KEY = "praglish.dub.lastCharacter.v1";
+
+  private loadProgressStore(): Record<string, Record<string, Record<number, number>>> {
+    try {
+      const raw = window.localStorage.getItem(DubScene.PROGRESS_KEY);
+      return raw ? (JSON.parse(raw) as Record<string, Record<string, Record<number, number>>>) : {};
+    } catch {
+      return {};
+    }
   }
 
-  private refreshCharacterButtons(): void {
-    if (!this.charListEl || !this.scriptSelectEl) return;
-    const script = this.availableScripts.find((s) => s.id === this.scriptSelectEl?.value);
-    const characters = script?.characters ?? [];
-    this.charListEl.innerHTML = characters
+  private saveProgressStore(store: Record<string, Record<string, Record<number, number>>>): void {
+    try {
+      window.localStorage.setItem(DubScene.PROGRESS_KEY, JSON.stringify(store));
+    } catch {
+      // localStorage yoksa/dolu ise ilerleme kaydedilemez ama oyun akisi bozulmaz.
+    }
+  }
+
+  private getScriptProgress(scriptId: string, character: string): Record<number, number> {
+    const store = this.loadProgressStore();
+    const scriptEntry = store[scriptId];
+    if (!scriptEntry) return {};
+    return scriptEntry[character] ?? {};
+  }
+
+  private recordLineProgress(scriptId: string, character: string, lineId: number, accuracy: number): void {
+    const store = this.loadProgressStore();
+    const scriptEntry = store[scriptId] ?? {};
+    const charEntry = scriptEntry[character] ?? {};
+    charEntry[lineId] = accuracy;
+    scriptEntry[character] = charEntry;
+    store[scriptId] = scriptEntry;
+    this.saveProgressStore(store);
+  }
+
+  private getLastCharacter(scriptId: string, fallback: string): string {
+    try {
+      const raw = window.localStorage.getItem(DubScene.LAST_CHARACTER_KEY);
+      const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      return map[scriptId] ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private recordLastCharacter(scriptId: string, character: string): void {
+    try {
+      const raw = window.localStorage.getItem(DubScene.LAST_CHARACTER_KEY);
+      const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      map[scriptId] = character;
+      window.localStorage.setItem(DubScene.LAST_CHARACTER_KEY, JSON.stringify(map));
+    } catch {
+      // yoksay - sadece "varsayilan secili karakter" hatirlanamaz
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Ekran 1: seviye (level) haritasi - script listesi artik acilir kutu
+  // degil, zorluk puanina gore siralanmis numarali "seviye" dugmeleri
+  // olarak gosteriliyor (bkz. dub.py). Her dugmenin altinda, oyuncunun o
+  // scriptte en son sectigi karaktere ait kac replik varsa o kadar
+  // user-ikonu var; tamamlanmis olanlar yesil, kalanlar gri, en altta o
+  // karakterin o scriptteki ortalama dogruluk yuzdesi yaziyor.
+  // ---------------------------------------------------------------------
+
+  private renderLevelMap(): void {
+    if (!this.levelsEl) return;
+    if (this.availableScripts.length === 0) {
+      this.levelsEl.innerHTML = `<p class="dialogue-status">Henuz eklenmis bir sahne yok.</p>`;
+      return;
+    }
+
+    this.levelsEl.innerHTML = this.availableScripts
+      .map((script, index) => this.renderLevelItemHtml(script, index))
+      .join("");
+
+    this.levelsEl.querySelectorAll("[data-action='toggle-level']").forEach((el) => {
+      el.addEventListener("click", () => {
+        const scriptId = (el as HTMLElement).dataset["script"];
+        if (!scriptId) return;
+        this.expandedScriptId = this.expandedScriptId === scriptId ? null : scriptId;
+        this.renderLevelMap();
+      });
+    });
+
+    this.levelsEl.querySelectorAll("[data-action='pick-character']").forEach((el) => {
+      el.addEventListener("click", () => {
+        const button = el as HTMLElement;
+        const scriptId = button.dataset["script"];
+        const character = button.dataset["character"];
+        if (!scriptId || !character) return;
+        const script = this.availableScripts.find((s) => s.id === scriptId);
+        if (!script) return;
+        this.recordLastCharacter(scriptId, character);
+        this.startScene(script, character);
+      });
+    });
+  }
+
+  private renderLevelItemHtml(script: DubScript, index: number): string {
+    const character = this.getLastCharacter(script.id, script.characters[0] ?? "");
+    const myLines = script.lines.filter((line) => line.speaker === character);
+    const progress = this.getScriptProgress(script.id, character);
+    const doneCount = myLines.filter((line) => progress[line.id] !== undefined).length;
+    const accuracies = myLines.map((line) => progress[line.id]).filter((v): v is number => v !== undefined);
+    const avgAccuracy = accuracies.length
+      ? Math.round(accuracies.reduce((sum, v) => sum + v, 0) / accuracies.length)
+      : 0;
+
+    const iconsHtml = myLines
+      .map((line, i) => {
+        const done = progress[line.id] !== undefined;
+        return `
+          <svg class="dub-user-icon ${done ? "done" : ""}" viewBox="0 0 24 24" width="16" height="16" data-line="${i}">
+            <circle cx="12" cy="8" r="5"></circle>
+            <path d="M4 22c0-4.4 3.6-8 8-8s8 3.6 8 8"></path>
+          </svg>
+        `;
+      })
+      .join("");
+
+    const charsHtml = script.characters
       .map(
-        (character) =>
-          `<button type="button" class="dub-char-btn" data-character="${this.escapeHtml(character)}">${this.escapeHtml(character)}</button>`,
+        (c) =>
+          `<button type="button" class="dub-char-btn" data-action="pick-character" data-script="${this.escapeHtml(script.id)}" data-character="${this.escapeHtml(c)}">${this.escapeHtml(c)}</button>`,
       )
       .join("");
+
+    const isExpanded = this.expandedScriptId === script.id;
+
+    return `
+      <div class="dub-level-item">
+        ${index > 0 ? '<div class="dub-level-connector"></div>' : ""}
+        <button type="button" class="dub-level-node ${isExpanded ? "active" : ""}" data-action="toggle-level" data-script="${this.escapeHtml(script.id)}">
+          <span class="dub-level-num">${script.level}</span>
+        </button>
+        <div class="dub-level-title">${this.escapeHtml(script.title)}</div>
+        <div class="dub-level-icons">${iconsHtml || '<span class="dub-level-percent">-</span>'}</div>
+        <div class="dub-level-percent">${doneCount}/${myLines.length} - %${avgAccuracy}</div>
+        <div class="dub-level-chars" data-role="chars" ${isExpanded ? "" : "hidden"}>${charsHtml}</div>
+      </div>
+    `;
   }
 
   // ---------------------------------------------------------------------
@@ -174,36 +314,23 @@ export class DubScene extends Phaser.Scene {
 
   private renderStart(): void {
     this.screen = "start";
+    this.expandedScriptId = null;
     const node = this.mount(`
-      <div class="dialogue-panel dub-panel">
+      <div class="dialogue-panel dub-panel dub-panel--levels">
         <div class="dialogue-header">
           <strong>Sahneyi Seslendir</strong>
           <span>Listen &amp; Repeat</span>
           <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
         </div>
-        <div class="dialogue-status" data-role="status">Bir sahne ve seslendirmek istedigin karakteri sec.</div>
-        <div class="dub-body dub-col">
-          <select class="dub-input" data-role="script"><option value="">Yukleniyor...</option></select>
-          <div class="dub-char-list" data-role="char-list"></div>
+        <div class="dialogue-status" data-role="status">Bir seviye sec, ardindan seslendirmek istedigin karakteri belirle.</div>
+        <div class="dub-body">
+          <div class="dub-levels" data-role="levels"><p class="dialogue-status">Yukleniyor...</p></div>
         </div>
       </div>
     `);
 
-    this.scriptSelectEl = node.querySelector('[data-role="script"]') as HTMLSelectElement;
-    this.charListEl = node.querySelector('[data-role="char-list"]') as HTMLElement;
-    this.populateScriptSelect();
-
-    this.scriptSelectEl.addEventListener("change", () => this.refreshCharacterButtons());
-
-    this.charListEl.addEventListener("click", (event) => {
-      const target = (event.target as HTMLElement).closest("[data-character]") as HTMLElement | null;
-      if (!target) return;
-      const character = target.dataset["character"];
-      if (!character) return;
-      const script = this.availableScripts.find((s) => s.id === this.scriptSelectEl?.value);
-      if (!script) return;
-      this.startScene(script, character);
-    });
+    this.levelsEl = node.querySelector('[data-role="levels"]') as HTMLElement;
+    if (this.availableScripts.length > 0) this.renderLevelMap();
   }
 
   private startScene(script: DubScript, character: string): void {
@@ -445,6 +572,7 @@ export class DubScene extends Phaser.Scene {
     const continueBtn = body.querySelector('[data-action="continue"]') as HTMLButtonElement;
     continueBtn.addEventListener("click", () => {
       continueBtn.disabled = true;
+      if (this.script) this.recordLineProgress(this.script.id, this.myCharacter, line.id, accuracy);
       this.summary.push({ line, words, accuracy_percent: accuracy });
       this.lineIndex += 1;
       this.advanceLine();

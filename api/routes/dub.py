@@ -15,17 +15,17 @@ Mimari kararlar:
 - KALICI VERITABANI / SUNUCU DURUMU YOK. Script'ler asagida SCRIPTS
   dict'inde sabit tanimli; skorlama tek bir istek/cevap uzerinden gecici -
   sunucu STT sonucunu donduruyor, hicbir yerde saklamiyor.
-- VARSAYILAN OLARAK GERCEK VIDEO/DIZI KLIBI KULLANILMIYOR (telif riski -
-  bkz. SCRIPTS["sample-cafe"]): repligin sesi mevcut /api/speech/tts ucuyla
-  O AN sentezleniyor. ISTISNA: bir script GERCEKTEN dogrulanmis kamu mali
-  bir kaynaga dayaniyorsa (bkz. SCRIPTS["charade-44"] - Charade, 1963,
-  ABD'de bildirim eksikligi nedeniyle kamu mali), DubScript.audio_url ile
-  o kaynaktan cikarilmis SADECE SES dosyasina (video degil - TOEFL
-  Listen&Repeat formati zaten sadece ses) isaret edilebilir. Repliklerin
-  start_seconds/end_seconds'i bu tek ses dosyasi icindeki araligi verir;
-  FRONTEND bu araligi <audio>.currentTime ile secip calar - SUNUCU HICBIR
-  SEKILDE KLIP KESMIYOR/DONUSTURMUYOR (ffmpeg yok), sadece Vite'in static
-  dosya sunumuyla oldugu gibi servis ediliyor.
+- VARSAYILAN OLARAK GERCEK VIDEO/DIZI KLIBI KULLANILMIYOR (telif riski):
+  repligin sesi mevcut /api/speech/tts ucuyla O AN sentezleniyor. ISTISNA:
+  bir script GERCEKTEN dogrulanmis kamu mali bir kaynaga dayaniyorsa (bkz.
+  SCRIPTS["charade-44"] - Charade, 1963, ABD'de bildirim eksikligi
+  nedeniyle kamu mali), DubScript.audio_url ile o kaynaktan cikarilmis
+  SADECE SES dosyasina (video degil - TOEFL Listen&Repeat formati zaten
+  sadece ses) isaret edilebilir. Repliklerin start_seconds/end_seconds'i bu
+  tek ses dosyasi icindeki araligi verir; FRONTEND bu araligi
+  <audio>.currentTime ile secip calar - SUNUCU HICBIR SEKILDE KLIP
+  KESMIYOR/DONUSTURMUYOR (ffmpeg yok), sadece Vite'in static dosya
+  sunumuyla oldugu gibi servis ediliyor.
 - OYUNCU BIR KARAKTER SECER (bkz. game/src/scenes/DubScene.ts): secilen
   karakterin repliklerinde "dinle -> tekrar et -> kaydet -> puanla" akisi
   calisir; SECILMEYEN diger karakter(ler)in repliklerinde orijinal ses
@@ -36,6 +36,14 @@ Mimari kararlar:
   gelmeyen oyuncu" olmadigi icin (tek kisilik akis) bunun bir sakincasi
   yok, aksine oyuncunun sahnenin tamamini onceden/sirayla takip etmesini
   kolaylastiriyor.
+- ZORLUK PUANI / SEVIYE SIRASI OTOMATIK. Script secimi artik acilir kutu
+  degil, frontend'de (DubScene.ts) numarali bir "seviye haritasi" olarak
+  gosteriliyor. Her script'in zorlugu, repliklerindeki kelimelere bakarak
+  _compute_difficulty_score() ile 0-100 arasi hesaplanir (bkz. asagisi) ve
+  script'ler bu puana gore siralanip 1'den baslayarak numaralandirilir
+  (DubScript.level). Yeni bir script SCRIPTS dict'ine eklendiginde otomatik
+  puanlanip dogru siraya yerlesir - manuel siralama yapmaya gerek yok
+  (demo asamasinda gerekirse dogrudan puan/level elle de ezilebilir).
 """
 
 import difflib
@@ -72,7 +80,7 @@ class ScriptLine(BaseModel):
     # Script bir ses klibine bagliysa (bkz. DubScript.audio_url), bu
     # repligin o TEK ses dosyasi icindeki baslangic/bitis saniyesi -
     # boylece frontend repligi TTS yerine GERCEK klipten oynatir. None ise
-    # (ornegin "sample-cafe" gibi TTS-tabanli scriptlerde) yok sayilir.
+    # (audio_url'i olmayan, TTS-tabanli bir script'te) yok sayilir.
     start_seconds: float | None = None
     end_seconds: float | None = None
 
@@ -87,23 +95,17 @@ class DubScript(BaseModel):
     # (game/public/... -> Vite) servis edilen GORECELI yol - orn.
     # "/assets/dub/charade-44.m4a". ONEMLI: bu yol API'nin degil, OYUNUN
     # (game) origin'inden servis edilir; API_BASE_URL ile birlestirilmemeli.
-    # None ise (ornegin "sample-cafe") repliklerin sesi TTS ile o an
-    # sentezlenir (bkz. dosya basi mimari notu).
+    # None ise repliklerin sesi TTS ile o an sentezlenir (bkz. dosya basi
+    # mimari notu).
     audio_url: str | None = None
+    # Asagida modul yuklenirken _compute_difficulty_score() ve seviye
+    # siralamasiyla DOLDURULUR (bkz. dosya sonu) - burada sadece varsayilan
+    # deger var, elle set edilmesi gerekmiyor.
+    difficulty_score: int = 0
+    level: int = 0
 
 
 SCRIPTS: dict[str, DubScript] = {
-    "sample-cafe": DubScript(
-        id="sample-cafe",
-        title="At the Cafe (sample)",
-        characters=["A", "B"],
-        lines=[
-            ScriptLine(id=1, speaker="A", text="Good morning! What can I get you today?", voice="Kore"),
-            ScriptLine(id=2, speaker="B", text="I'd like a large coffee, please.", voice="Puck"),
-            ScriptLine(id=3, speaker="A", text="Anything else with that?", voice="Kore"),
-            ScriptLine(id=4, speaker="B", text="No, thank you. That's all.", voice="Puck"),
-        ],
-    ),
     # Charade (1963) - ABD'de kamu mali oldugu bu sohbette ayrica arastirilip
     # dogrulanmis bir film (bkz. proje notlari: bildirim eksikligi nedeniyle
     # PD). Kullanicinin filmin ~44. dakikasindan aldigi ~53 saniyelik klipten
@@ -211,9 +213,89 @@ SCRIPTS: dict[str, DubScript] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Zorluk puani / seviye siralama
+#
+# Yeni bir script eklemenin TEK adimi yukaridaki SCRIPTS dict'ine girmek -
+# zorluk puani ve seviye numarasi asagida modul yuklenirken OTOMATIK
+# hesaplanir, elle siralama yapmaya gerek yok.
+#
+# Puan (0-100), replik metinlerine bakarak uc basit sinyali birlestirir:
+#   1) nadir kelime orani  - COMMON_WORDS listesinde OLMAYAN essiz kelime
+#      orani (agirlik: %55). Bir script ne kadar "gunluk konusma" disina
+#      cikarsa (ozel isimler, deyimler, az kullanilan kelimeler) puan o
+#      kadar yukselir.
+#   2) ortalama kelime uzunlugu (agirlik: %25) - uzun kelimeler genelde
+#      daha az yaygin/daha zor okunur.
+#   3) ortalama replik uzunlugu, kelime sayisi olarak (agirlik: %20) - uzun
+#      cumleleri dinleyip tekrar etmek daha zordur.
+# Bu, dilbilimsel olarak kusursuz bir olcum degil (ozel isimler orn.
+# "Bartholomew" nadir kelime sayilip puani sisirebilir) ama script'leri
+# GORECELI olarak zorluk sirasina koymak icin yeterli - proje su an demo
+# asamasinda oldugu icin (bkz. dosya basi not) siralama gerekirse
+# difficulty_score/level elle de ezilebilir.
+COMMON_WORDS: frozenset[str] = frozenset(
+    """
+    the be to of and a in that have i it for not on with he as you do at
+    this but his by from they we say her she or an will my one all would
+    there their what so up out if about who get which go me when make can
+    like time no just him know take people into year your good some could
+    them see other than then now look only come its over think also back
+    after use two how our work first well way even new want because any
+    these give day most us is was are been has had were said did going
+    got very much many more before still should never being does doing
+    having might must shall need used always sometimes often once again
+    here where why whose whom each few most own same both either neither
+    thing things man woman child life world hand part place case week
+    month night point water room area money story fact group country
+    problem question house right left big small long short high low old
+    young great little another sure true real best better worse worst
+    yes no thank please sorry hello goodbye morning afternoon evening
+    friend love happy sad angry tired hungry thirsty hot cold fast slow
+    easy hard open close start stop begin end follow lost found lose win
+    play game work school home car house food drink eat sleep walk run
+    talk speak listen hear watch see look feel touch smell taste
+    """.split()
+)
+
+
+def _compute_difficulty_score(lines: list[ScriptLine]) -> int:
+    words = [w for line in lines for w in line.text.split()]
+    if not words:
+        return 1
+
+    normalized = ["".join(ch for ch in w.lower() if ch.isalpha()) for w in words]
+    normalized = [w for w in normalized if w]
+    unique_words = set(normalized) or {""}
+    rare_ratio = sum(1 for w in unique_words if w not in COMMON_WORDS) / len(unique_words)
+
+    avg_word_len = sum(len(w) for w in normalized) / len(normalized) if normalized else 0
+    # ~3 harf (cok kisa/kolay kelimeler) - ~8 harf (uzun/zor kelimeler) araligina normalize et.
+    word_len_score = max(0.0, min(1.0, (avg_word_len - 3) / 5))
+
+    avg_line_len = sum(len(line.text.split()) for line in lines) / len(lines)
+    # ~3 kelimelik kisa repliklerden ~15 kelimelik uzun repliklere normalize et.
+    line_len_score = max(0.0, min(1.0, (avg_line_len - 3) / 12))
+
+    raw_score = 55 * rare_ratio + 25 * word_len_score + 20 * line_len_score
+    return max(1, min(100, round(raw_score)))
+
+
+def _assign_difficulty_and_levels(scripts: dict[str, DubScript]) -> None:
+    for script in scripts.values():
+        script.difficulty_score = _compute_difficulty_score(script.lines)
+
+    ordered_ids = sorted(scripts, key=lambda script_id: scripts[script_id].difficulty_score)
+    for level, script_id in enumerate(ordered_ids, start=1):
+        scripts[script_id].level = level
+
+
+_assign_difficulty_and_levels(SCRIPTS)
+
+
 @router.get("/scripts", response_model=list[DubScript])
 def list_scripts() -> list[DubScript]:
-    return list(SCRIPTS.values())
+    return sorted(SCRIPTS.values(), key=lambda script: script.level)
 
 
 # ---------------------------------------------------------------------------

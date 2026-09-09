@@ -48,6 +48,12 @@ export interface DubScript {
   // edilir, API_BASE_URL ile birlestirilmemeli. Bos ise repliklerin sesi
   // /api/speech/tts ile o an sentezlenir.
   audio_url?: string | null;
+  // Sunucu tarafinda repliklerin kelimelerine bakarak hesaplanan 0-100
+  // zorluk puani ve bu puana gore siralanmis 1'den baslayan seviye numarasi
+  // (bkz. api/routes/dub.py _compute_difficulty_score). Yeni bir script
+  // eklendiginde otomatik hesaplanip mevcutlarin arasina yerlesir.
+  difficulty_score: number;
+  level: number;
 }
 
 export interface WordVerdict {

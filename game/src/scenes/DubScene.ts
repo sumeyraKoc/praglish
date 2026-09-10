@@ -364,6 +364,27 @@ export class DubScene extends Phaser.Scene {
     this.panel = null;
   }
 
+  /**
+   * "Sira Sende"/"Sirasi Baskasinda" ekranlarindaki BACK: tum sahneden
+   * (MenuScene'e) atilmak yerine bir onceki adima, script/karakter secim
+   * ekranina (renderStart - "Listen & Repeat") doner. teardown()'un aksine
+   * sahneyi TERK ETMIYORUZ - sadece devam eden ses/kayit/video temizlenip
+   * mevcut denemenin durumu (resetState) sifirlanir; availableScripts hala
+   * yuklu oldugu icin renderStart() listeyi yeniden fetch etmeden gosterir.
+   */
+  private exitToLevelSelect(): void {
+    this.playbackAbort = true;
+    this.stopCurrentAudio();
+    this.clearRecordAutoStop();
+    if (this.isRecording) {
+      this.isRecording = false;
+      this.mediaRecorder?.stop();
+    }
+    this.mediaStream?.getTracks().forEach((track) => track.stop());
+    this.resetState();
+    this.renderStart();
+  }
+
   private exitToMenu(): void {
     this.teardown();
     this.scene.start("MenuScene");
@@ -375,14 +396,22 @@ export class DubScene extends Phaser.Scene {
     this.statusEl.classList.toggle("dub-status-error", isError);
   }
 
-  private mount(html: string): HTMLElement {
+  /**
+   * `onExit` verilmezse [data-action="exit"] varsayilan olarak ana menuye
+   * doner (exitToMenu). "Sira Sende"/"Sirasi Baskasinda" ekranlari (bkz.
+   * renderYourTurn/renderOtherTurn) burayi ana menu yerine script/karakter
+   * secim ekranina (exitToLevelSelect) donecek sekilde EZER - kullanici o
+   * ekranlardaki BACK'e bastiginda tum sahneden atilmak yerine bir onceki
+   * adima (Listen & Repeat) dogru geri gider.
+   */
+  private mount(html: string, onExit: () => void = () => this.exitToMenu()): HTMLElement {
     this.panel?.destroy();
     const dom = this.add.dom(640, 360).createFromHTML(html);
     this.panel = dom;
     const node = dom.node as HTMLElement;
     this.statusEl = node.querySelector('[data-role="status"]');
     const closeBtn = node.querySelector('[data-action="exit"]');
-    closeBtn?.addEventListener("click", () => this.exitToMenu());
+    closeBtn?.addEventListener("click", () => onExit());
     return node;
   }
 
@@ -594,14 +623,16 @@ export class DubScene extends Phaser.Scene {
         <div class="dub-studio-stage">
           <div class="dub-studio-tag">Replik ${this.lineIndex + 1}/${total}</div>
           <video class="dub-studio-video" data-role="line-video" muted playsinline></video>
+          <div class="dub-studio-feedback" data-role="line-feedback" hidden></div>
           <button type="button" class="dub-console-btn dub-console-btn--back" data-action="exit" title="Geri don" aria-label="Geri don">BACK</button>
           <button type="button" class="dub-console-btn dub-console-btn--replay" data-action="replay" title="Tekrar Dinle" aria-label="Tekrar Dinle">${ICON_REPLAY}</button>
           <button type="button" class="dub-console-btn dub-console-btn--record" data-action="record" data-role="record-btn" disabled title="Kayda Basla" aria-label="Kayda Basla">${ICON_MIC}</button>
           <button type="button" class="dub-console-btn dub-console-btn--continue" data-action="continue" data-role="continue-btn" disabled title="Devam Et" aria-label="Devam Et">${ICON_CONTINUE}</button>
         </div>
-        <div class="dub-studio-feedback" data-role="line-feedback" hidden></div>
       </div>
-    `);
+    `,
+      () => this.exitToLevelSelect(),
+    );
 
     this.setupVideoElement(node, "line-video");
 
@@ -887,7 +918,9 @@ export class DubScene extends Phaser.Scene {
           <button type="button" class="dub-console-btn dub-console-btn--continue" data-action="continue" disabled title="Devam Et" aria-label="Devam Et">${ICON_CONTINUE}</button>
         </div>
       </div>
-    `);
+    `,
+      () => this.exitToLevelSelect(),
+    );
 
     this.setupVideoElement(node, "line-video");
 

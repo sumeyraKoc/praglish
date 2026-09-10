@@ -357,7 +357,7 @@
        satirlik durum metninin (.dub-studio-status) icine gomulu - ayrica
        panel genisligi 800->860px yapilarak bosalan dikey alan ekrani
        buyutmek icin kullanildi (bkz. DubScene.ts renderYourTurn/renderOtherTurn). */
-    .dub-panel--studio { width: 860px; height: auto; }
+    .dub-panel--studio { width: 1000px; height: auto; }
     .dub-studio-status { margin-bottom: 8px; }
     .dub-studio-caption {
       margin: 0 0 8px;
@@ -445,8 +445,30 @@
       letter-spacing: 0.3px;
       z-index: 2;
     }
-    .dub-studio-feedback { margin-top: 10px; }
-    .dub-studio-feedback .dub-turn-indicator { margin: 8px 0 0; }
+    /* Puanlama sonrasi kelime/yuzde artik panelin ALTINDA degil, ekranin
+       (video alaninin) KENDI ICINDE, tipki bir "altyazi" gibi TV ekraninin
+       alt kismina bindirilmis, dusuk opakli siyah bir serit uzerinde
+       gosteriliyor - boylece kirmizi/yesil kelimeler daha net secilip
+       kullanici neyi yanlis soyledigini video hala ekrandayken gorebiliyor.
+       Konum/genislik video ile AYNI (left/width - bkz. .dub-studio-video),
+       "bottom" ise video'nun stage icindeki alt kenariyla hizali (100% -
+       72.66% = 27.34%), altyazinin ekranin en dibine yapismamasi icin
+       ustune biraz pay eklendi. */
+    .dub-studio-feedback {
+      position: absolute;
+      left: 11.91%;
+      width: 69.1%;
+      bottom: 28.5%;
+      margin: 0;
+      padding: 6px 12px;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 4px;
+      text-align: center;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .dub-studio-feedback .dub-word { font-size: 15px; font-weight: 700; }
+    .dub-studio-feedback .dub-turn-indicator { margin: 4px 0 0; font-size: 11px; color: #d8cfeb; }
 
     .dub-turn-indicator { text-align: center; font-size: 16px; margin: 14px 0; color: #fff; }
     .dub-word { margin-right: 5px; }

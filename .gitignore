@@ -9,3 +9,15 @@ venv/
 node_modules/
 dist/
 .pnpm-store/
+
+# Dublaj (Sahneyi Seslendir) icin kaynak olarak indirilen/kirpilan HAM film
+# klipleri (orn. charade.mp4, superman.mp4) - bunlar sadece BIR KEREYE
+# mahsus ffmpeg ile ses/video CIKARMAK icin kullanilir, projenin kendisi
+# icin gerekli DEGILDIR. Gercekten kullanilan, kucultulmus/kirpilmis
+# cikti dosyalari (game/public/assets/dub/*.m4a, *.mp4) ayri, kucuk ve
+# repo'ya dahil - bu ham kaynaklar (genelde 20-30MB+) repo'yu sismesin
+# diye burada tutulmuyor. Cikarma islemi bittikten sonra bu dosyalari
+# repo kok dizininden SILEBILIRSIN, git bunlari zaten takip etmiyor.
+/*.mp4
+/*.mov
+/*.mkv

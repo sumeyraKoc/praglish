@@ -48,6 +48,13 @@ export interface DubScript {
   // edilir, API_BASE_URL ile birlestirilmemeli. Bos ise repliklerin sesi
   // /api/speech/tts ile o an sentezlenir.
   audio_url?: string | null;
+  // Doluysa (orn. "/assets/dub/charade-44.mp4") audio_url ile AYNI zaman
+  // cizelgesini paylasan, SESSIZ (video icinde ses YOK) bir goruntu klibi
+  // var demektir - karakterin agiz hareketlerini gostermek icin kullanilir,
+  // gercek ses HER ZAMAN audio_url'den (veya TTS'ten) gelir; frontend bu
+  // video elementini <video muted> olarak oynatmali. Bos ise video
+  // gosterilmez, sadece ses ile calisilir.
+  video_url?: string | null;
   // Sunucu tarafinda repliklerin kelimelerine bakarak hesaplanan 0-100
   // zorluk puani ve bu puana gore siralanmis 1'den baslayan seviye numarasi
   // (bkz. api/routes/dub.py _compute_difficulty_score). Yeni bir script

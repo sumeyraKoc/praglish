@@ -186,6 +186,12 @@
       min-height: 56px;
       padding: 14px 20px 6px;
     }
+    /* NOT: burada BILEREK text-transform:uppercase YOK - sayfa lang="tr"
+       oldugu icin CSS uppercase, "i" harfini Turkce kuralina gore noktali
+       "İ"ye cevirip karakter isimlerini (Reggie, King Little, ...) bozuyordu.
+       Buyuk harf donusumu artik DubScene.ts bannerText() ile JS tarafinda
+       (locale-duyarsiz toUpperCase) yapiliyor - buraya gelen metin zaten
+       BUYUK HARF. */
     .dub-wood-btn,
     .dub-wood-banner {
       box-sizing: border-box;
@@ -199,7 +205,6 @@
       color: #ffd873;
       font: 900 14px "Arial Black", Arial, sans-serif;
       letter-spacing: 1px;
-      text-transform: uppercase;
       text-shadow: 1px 1px 0 #2a1608, 0 0 8px rgba(0, 0, 0, 0.3);
     }
     .dub-wood-btn {
@@ -331,6 +336,117 @@
       transition: transform 0.12s ease;
     }
     .dub-char-pill:hover { transform: translateY(-2px); }
+
+    /* DubScene - Ekran 2a/2b ("sira sende" / "sira baskasinda"): kullanicinin
+       verdigi eski TV + kontrol konsolu gorseli (bkz.
+       game/public/assets/dub/ui/studio-bg.jpg) uzerine kurulu. Video, TV'nin
+       SIYAH EKRANININ icine; "tekrar dinle / kaydet / devam et" ikonlari
+       ekranin ALTINDAKI uc konsol dugmesinin (turuncu/yesil/gri) TAM
+       UZERINE mutlak konumlandirilir. Butun yuzdeler orijinal
+       2528x1686 gorsel uzerinde olculdu (bkz. proje notlari) -
+       .dub-studio-stage'in aspect-ratio'su gorselle AYNI tutuldugu icin
+       (asagida) bu yuzdeler panel hangi genislikte render edilirse edilsin
+       DOGRU hizalanmaya devam eder. */
+    /* NOT: ayri bir "header" satiri (BACK dugmesi + ahsap tabela + replik
+       sayaci) KALDIRILDI - o satir dikey yer kaplayip ekrani (video/monitor
+       gorseli) kucultuyordu. BACK artik konsolun sol ustundeki cizili
+       dugmelerden birinin (yesil, ilk dugme) UZERINE metin olarak
+       yerlestiriliyor (bkz. .dub-console-btn--back), replik sayaci ise
+       monitorun DISINA, corner'a yapistirilmis kucuk bir kagit etiket
+       gorunumunde (bkz. .dub-studio-tag). Karakter/sira bilgisi artik tek
+       satirlik durum metninin (.dub-studio-status) icine gomulu - ayrica
+       panel genisligi 800->860px yapilarak bosalan dikey alan ekrani
+       buyutmek icin kullanildi (bkz. DubScene.ts renderYourTurn/renderOtherTurn). */
+    .dub-panel--studio { width: 860px; height: auto; }
+    .dub-studio-status { margin-bottom: 8px; }
+    .dub-studio-caption {
+      margin: 0 0 8px;
+      text-align: center;
+      font-style: italic;
+      font-size: 14px;
+      color: #d8cfeb;
+    }
+    .dub-studio-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2528 / 1686;
+      background-image: url("/assets/dub/ui/studio-bg.jpg");
+      background-size: 100% 100%;
+      background-position: center;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .dub-studio-video {
+      position: absolute;
+      left: 11.91%;
+      top: 7.65%;
+      width: 69.1%;
+      height: 65.01%;
+      object-fit: cover;
+      background: #000;
+    }
+    /* Konsol ikonlari: cizilmis dugmenin UZERINDE, TAM OTURACAK sekilde
+       konumlandirilir - kendi arka plani YOK (dugmenin kendi rengi/dokusu
+       zaten gorselde var), sadece ikon ustte durur. */
+    .dub-console-btn {
+      position: absolute;
+      top: 92.82%;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.12s ease, filter 0.12s ease;
+    }
+    .dub-console-btn svg { width: 55%; height: 55%; fill: #fff8ec; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7)); }
+    .dub-console-btn:hover:not(:disabled) { transform: scale(1.08); }
+    .dub-console-btn:active:not(:disabled) { transform: scale(0.92); }
+    .dub-console-btn:disabled { cursor: default; filter: grayscale(0.75) brightness(0.55); }
+    .dub-console-btn--replay { left: 58.94%; width: 9.89%; height: 5.34%; }
+    .dub-console-btn--record { left: 70.02%; width: 8.7%; height: 5.34%; }
+    .dub-console-btn--record.recording svg { fill: #ffb3b3; }
+    .dub-console-btn--record.recording { animation: dub-console-pulse 1s ease-in-out infinite; }
+    .dub-console-btn--continue { left: 80.7%; top: 92.82%; width: 3.76%; height: 4.75%; }
+    @keyframes dub-console-pulse {
+      0%, 100% { filter: drop-shadow(0 0 0 rgba(255, 90, 90, 0)); }
+      50% { filter: drop-shadow(0 0 10px rgba(255, 90, 90, 0.85)); }
+    }
+    /* BACK: konsolun sol ustundeki ilk (yesil) cizili dugmenin TAM UZERINE
+       oturan metin - SVG ikon degil, dugmenin uzerine "kazinmis" gibi
+       koyu/kontrastli bir yazi (bkz. yukaridaki NOT). */
+    .dub-console-btn--back {
+      left: 8.61%;
+      top: 91.67%;
+      width: 10.56%;
+      height: 5%;
+      color: #17280f;
+      font: 900 13px "Arial Black", Arial, sans-serif;
+      letter-spacing: 0.5px;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+    }
+    /* Replik sayaci: monitorun DISINA (ahsap cerceve kosesine) yapisik
+       kucuk, hafif donuk bir kagit etiket - "yirtik not kagidi" hissi icin
+       duzensiz koseler + hafif golge. Konumu %'lik oldugu icin panel
+       genisligi degisse bile monitorun kosesinde kalir. */
+    .dub-studio-tag {
+      position: absolute;
+      top: 1.5%;
+      right: 6%;
+      transform: rotate(-7deg);
+      background: linear-gradient(160deg, #f3e6c2 0%, #e6d3a0 100%);
+      border: 1px solid #b89a5e;
+      border-radius: 3px 9px 4px 8px;
+      padding: 4px 11px;
+      box-shadow: 0 3px 6px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+      color: #4a3418;
+      font: 800 13px "Arial Black", Arial, sans-serif;
+      letter-spacing: 0.3px;
+      z-index: 2;
+    }
+    .dub-studio-feedback { margin-top: 10px; }
+    .dub-studio-feedback .dub-turn-indicator { margin: 8px 0 0; }
 
     .dub-turn-indicator { text-align: center; font-size: 16px; margin: 14px 0; color: #fff; }
     .dub-word { margin-right: 5px; }

@@ -51,8 +51,9 @@ const DUCK_VOLUME = 0.12;
 // game/public/assets/dub/ui/). Her script bir not kagidina atanir; script
 // sayisi not gorseli sayisini (4) asarsa NOTE_IMAGES dongusel (modulo)
 // olarak tekrar kullanilir, boylece yeni bir script eklendiginde kod
-// degismeden calismaya devam eder.
-const SCRIPT_SELECT_BG_URL = "/assets/dub/ui/script-select-bg.jpg";
+// degismeden calismaya devam eder. (Arka plan URL'i dogrudan CSS'te
+// tanimli - bkz. index.html .dub-panel--levels - burada ayrica
+// tutulmuyor.)
 const NOTE_IMAGES = [
   "/assets/dub/ui/note1.png",
   "/assets/dub/ui/note2.png",
@@ -79,6 +80,42 @@ function noteImageForScript(scriptId: string, index: number): string {
 const CHARACTER_PILL_COLORS = ["#6bbf6b", "#e0668f", "#e8a23c", "#8f7ae0", "#4fb8c9"];
 function characterPillColor(index: number): string {
   return CHARACTER_PILL_COLORS[index % CHARACTER_PILL_COLORS.length];
+}
+
+// ---------------------------------------------------------------------
+// Ekran 2a/2b ("sira sende" / "sira baskasinda") icin "dublaj stüdyosu"
+// arka plani (bkz. game/public/assets/dub/ui/studio-bg.jpg - kullanicinin
+// verdigi eski bir TV/monitor + kontrol konsolu gorseli). Video, gorseldeki
+// SIYAH EKRANIN icine; "tekrar dinle / kaydet / devam et" ikonlari ise
+// ekranin ALTINDAKI uc konsol dugmesinin (turuncu/yesil/gri) TAM UZERINE
+// mutlak konumlandirilir - yuzdeler orijinal 2528x1686 gorsel uzerinde
+// olcum yapilip hesaplandi (bkz. proje notlari), panel'in kendi genisligi
+// degisse bile .dub-studio-stage'in aspect-ratio'su gorselle AYNI
+// tutuldugu icin (bkz. index.html) bu yuzdeler her zaman doğru hizalanir.
+const STUDIO_BG_URL = "/assets/dub/ui/studio-bg.jpg";
+
+// Basit, tek renkli (currentColor ile boyanan) SVG ikonlar - konsol
+// dugmelerinin turuncu/yesil/gri zeminiyle her zaman kontrast olusturmasi
+// icin CSS'te acik krem rengiyle doldurulur (bkz. .dub-console-btn svg).
+const ICON_REPLAY =
+  '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35Z"/></svg>';
+const ICON_MIC =
+  '<svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>';
+const ICON_STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+const ICON_CONTINUE = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg>';
+
+/**
+ * "Ahsap afis" (.dub-wood-banner/.dub-wood-btn - bkz. index.html) metni
+ * artik CSS text-transform:uppercase KULLANMIYOR: sayfa `lang="tr"`
+ * oldugu icin tarayici CSS'te "i" harfini Turkce kurallarina gore noktali
+ * BUYUK I'ya ("İ") ceviriyordu (orn. "Gulliver's" -> "GULLİVER'S") - bu,
+ * ozellikle karakter isimlerinde (Reggie, King Little, ...) rahatsiz edici
+ * bir "bozukluk" gibi goruyordu. Duz JS toUpperCase() BU LOKAL-DUYARLI
+ * kurali uygulamaz, bu yuzden dinamik banner metni HER ZAMAN burada
+ * buyutulup CSS'e duz (transform'suz) metin olarak veriliyor.
+ */
+function bannerText(text: string): string {
+  return text.toUpperCase();
 }
 
 export class DubScene extends Phaser.Scene {
@@ -121,8 +158,19 @@ export class DubScene extends Phaser.Scene {
   // mount() yeni bir DOM olusturdugu icin bu referans da yenilenir.
   private videoEl: HTMLVideoElement | null = null;
 
-  private turnBodyEl: HTMLElement | null = null;
+  // "Sira sende" ekraninda replik puanlandiktan sonra gosterilen
+  // kelime-kelime dogruluk + yuzde alani (bkz. renderLineFeedback) - artik
+  // dugme satirinin YERINE gecmiyor (konsol ikonlari sabit kalmali),
+  // ayrica gosterilip gizleniyor (bkz. dub-studio-feedback).
+  private turnFeedbackEl: HTMLElement | null = null;
   private turnRecordBtn: HTMLButtonElement | null = null;
+  private turnContinueBtn: HTMLButtonElement | null = null;
+  // Puanlama bittiginde HEMEN ilerlemek yerine (eskisi gibi dinamik olarak
+  // eklenen tek kullanimlik "Devam Et" dugmesi) sabit konsol dugmesine
+  // click listener BIR KERE baglaniyor (bkz. renderYourTurn) - o an
+  // ilerlemenin ne yapacagini (hangi line/words/accuracy) burada saklayip
+  // tikaninca calistiriyoruz.
+  private pendingContinueAction: (() => void) | null = null;
 
   constructor() {
     super("DubScene");
@@ -436,8 +484,8 @@ export class DubScene extends Phaser.Scene {
     const node = this.mount(`
       <div class="dialogue-panel dub-panel dub-panel--levels">
         <div class="dub-levels-header">
-          <button type="button" class="dub-wood-btn dub-wood-btn--back" data-action="exit" aria-label="Geri don">Back</button>
-          <div class="dub-wood-banner">Listen &amp; Repeat</div>
+          <button type="button" class="dub-wood-btn dub-wood-btn--back" data-action="exit" aria-label="Geri don">BACK</button>
+          <div class="dub-wood-banner">LISTEN &amp; REPEAT</div>
           <div class="dub-help" data-role="help">
             <button type="button" class="dub-help-icon" data-action="toggle-help" aria-label="Yardim">?</button>
             <div class="dub-help-tooltip" role="tooltip">
@@ -532,30 +580,38 @@ export class DubScene extends Phaser.Scene {
   private renderYourTurn(line: DubScriptLine): void {
     this.screen = "your-turn";
     const total = this.script!.lines.length;
+    // NOT: bu ekran artik kullanicinin verdigi "dublaj studyosu" gorseli
+    // uzerine kurulu (bkz. STUDIO_BG_URL / .dub-panel--studio) - video
+    // eski TV'nin siyah ekranina, "tekrar dinle/kaydet/devam et" ikonlari
+    // ise ekranin altindaki UC konsol dugmesinin TAM UZERINE sabit
+    // konumlandiriliyor (bkz. .dub-console-btn--replay/record/continue).
+    // Puanlama sonrasi gosterilen kelime/yuzde artik dugmelerin YERINE
+    // gecmiyor (o dugmeler HEP AYNI yerde kalmali) - ayri bir
+    // dub-studio-feedback alaninda gosterilip gizleniyor.
     const node = this.mount(`
-      <div class="dialogue-panel dub-panel">
-        <div class="dialogue-header">
-          <strong>Sira sende! (${this.escapeHtml(this.myCharacter)})</strong>
-          <span>Replik ${this.lineIndex + 1}/${total}</span>
-          <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
+      <div class="dialogue-panel dub-panel dub-panel--studio">
+        <div class="dialogue-status dub-studio-status" data-role="status">${this.escapeHtml(this.myCharacter)}: Repligi dinliyorsun...</div>
+        <div class="dub-studio-stage">
+          <div class="dub-studio-tag">Replik ${this.lineIndex + 1}/${total}</div>
+          <video class="dub-studio-video" data-role="line-video" muted playsinline></video>
+          <button type="button" class="dub-console-btn dub-console-btn--back" data-action="exit" title="Geri don" aria-label="Geri don">BACK</button>
+          <button type="button" class="dub-console-btn dub-console-btn--replay" data-action="replay" title="Tekrar Dinle" aria-label="Tekrar Dinle">${ICON_REPLAY}</button>
+          <button type="button" class="dub-console-btn dub-console-btn--record" data-action="record" data-role="record-btn" disabled title="Kayda Basla" aria-label="Kayda Basla">${ICON_MIC}</button>
+          <button type="button" class="dub-console-btn dub-console-btn--continue" data-action="continue" data-role="continue-btn" disabled title="Devam Et" aria-label="Devam Et">${ICON_CONTINUE}</button>
         </div>
-        <div class="dialogue-status" data-role="status">Repligi dinliyorsun...</div>
-        <video class="dub-video" data-role="line-video" muted playsinline></video>
-        <div class="dub-body dub-col" data-role="turn-body">
-          <div class="dub-row">
-            <button type="button" class="dub-btn secondary" data-action="replay">Tekrar Dinle</button>
-            <button type="button" class="dub-btn dub-rec-btn" data-action="record" disabled>Kayda Basla</button>
-          </div>
-        </div>
+        <div class="dub-studio-feedback" data-role="line-feedback" hidden></div>
       </div>
     `);
 
     this.setupVideoElement(node, "line-video");
 
     const replayBtn = node.querySelector('[data-action="replay"]') as HTMLButtonElement;
-    const recordBtn = node.querySelector('[data-action="record"]') as HTMLButtonElement;
-    this.turnBodyEl = node.querySelector('[data-role="turn-body"]') as HTMLElement;
+    const recordBtn = node.querySelector('[data-role="record-btn"]') as HTMLButtonElement;
+    const continueBtn = node.querySelector('[data-role="continue-btn"]') as HTMLButtonElement;
+    this.turnFeedbackEl = node.querySelector('[data-role="line-feedback"]') as HTMLElement;
     this.turnRecordBtn = recordBtn;
+    this.turnContinueBtn = continueBtn;
+    this.pendingContinueAction = null;
 
     const playReference = (): Promise<void> => this.playReferenceForLine(line, 1);
 
@@ -569,10 +625,17 @@ export class DubScene extends Phaser.Scene {
         void this.startRecording();
       }
     });
+    continueBtn.addEventListener("click", () => {
+      if (continueBtn.disabled) return;
+      continueBtn.disabled = true;
+      const action = this.pendingContinueAction;
+      this.pendingContinueAction = null;
+      action?.();
+    });
 
     void playReference().then(() => {
       recordBtn.disabled = false;
-      this.setStatus("Simdi sirayla tekrar et - kaydi baslat.");
+      this.setStatus(`${this.myCharacter}: Simdi sirayla tekrar et - kaydi baslat.`);
     });
   }
 
@@ -703,7 +766,12 @@ export class DubScene extends Phaser.Scene {
       recorder.start();
       this.isRecording = true;
       this.setStatus("Kayittasin... bitirince tekrar butona bas.");
-      if (this.turnRecordBtn) this.turnRecordBtn.textContent = "Kaydi Bitir";
+      if (this.turnRecordBtn) {
+        this.turnRecordBtn.innerHTML = ICON_STOP;
+        this.turnRecordBtn.title = "Kaydi Bitir";
+        this.turnRecordBtn.setAttribute("aria-label", "Kaydi Bitir");
+        this.turnRecordBtn.classList.add("recording");
+      }
       this.recordAutoStopHandle = window.setTimeout(() => this.finishRecording(), RECORDING_AUTO_STOP_MS);
     } catch {
       this.setStatus("Mikrofon izni verilmedi.");
@@ -722,6 +790,16 @@ export class DubScene extends Phaser.Scene {
     if (!this.isRecording) return;
     this.isRecording = false;
     this.mediaRecorder?.stop();
+    // Ikonu hemen mikrofona geri dondur ve dugmeyi devre disi birak -
+    // submitRecording sonuclaninca (basarili/basarisiz) uygun sekilde
+    // tekrar ayarlanir (bkz. renderLineFeedback / describeError sonrasi).
+    if (this.turnRecordBtn) {
+      this.turnRecordBtn.innerHTML = ICON_MIC;
+      this.turnRecordBtn.title = "Kayda Basla";
+      this.turnRecordBtn.setAttribute("aria-label", "Kayda Basla");
+      this.turnRecordBtn.classList.remove("recording");
+      this.turnRecordBtn.disabled = true;
+    }
   }
 
   private async submitRecording(): Promise<void> {
@@ -734,6 +812,10 @@ export class DubScene extends Phaser.Scene {
     this.audioChunks = [];
     if (blob.size === 0) {
       this.setStatus("Ses kaydedilemedi - tekrar dene.");
+      // finishRecording() kayit dugmesini devre disi birakmisti (bkz.
+      // orada) - puanlanacak bir sey olmadigi icin BURADA tekrar
+      // deneyebilsin diye geri aciyoruz.
+      if (this.turnRecordBtn) this.turnRecordBtn.disabled = false;
       return;
     }
     // "Tum Sahneyi Dinle"de bu repligi ORIJINAL ses yerine bununla degistirmek
@@ -746,27 +828,40 @@ export class DubScene extends Phaser.Scene {
       this.renderLineFeedback(line, result.words, result.accuracy_percent);
     } catch (error: unknown) {
       this.setStatus(this.describeError(error, "Degerlendirme basarisiz oldu."));
+      // Puanlama basarisiz oldu - kullanici ayni repligi tekrar
+      // kaydedebilsin diye mikrofon dugmesini geri ac.
+      if (this.turnRecordBtn) this.turnRecordBtn.disabled = false;
     }
   }
 
+  /**
+   * Puanlama sonucunu gosterir. ESKIDEN bu, dugme satirinin (turn-body)
+   * TUM icerigini "Devam Et" dugmesiyle degistiriyordu - artik konsol
+   * ikonlari (bkz. .dub-studio-stage) HEP AYNI 3 sabit yerde kaliyor:
+   * kelime/yuzde ayri bir dub-studio-feedback alaninda gosterilir, "devam
+   * et" ikonu (zaten DOM'da, disabled) burada aktif edilir ve tiklaninca
+   * ne yapacagi pendingContinueAction'a yazilir (bkz. renderYourTurn'deki
+   * continueBtn click listener).
+   */
   private renderLineFeedback(line: DubScriptLine, words: WordVerdict[], accuracy: number): void {
-    const body = this.turnBodyEl;
-    if (!body) return;
-    const wordsHtml = words
-      .map((w) => `<span class="dub-word ${w.correct ? "correct" : "wrong"}">${this.escapeHtml(w.word)}</span>`)
-      .join("");
-    body.innerHTML = `
-      <div>${wordsHtml}</div>
-      <div class="dub-turn-indicator">Dogruluk: %${accuracy}</div>
-      <button type="button" class="dub-btn" data-action="continue">Devam Et</button>
-    `;
-    const continueBtn = body.querySelector('[data-action="continue"]') as HTMLButtonElement;
-    continueBtn.addEventListener("click", () => {
-      continueBtn.disabled = true;
+    const feedbackEl = this.turnFeedbackEl;
+    if (feedbackEl) {
+      const wordsHtml = words
+        .map((w) => `<span class="dub-word ${w.correct ? "correct" : "wrong"}">${this.escapeHtml(w.word)}</span>`)
+        .join("");
+      feedbackEl.innerHTML = `
+        <div>${wordsHtml}</div>
+        <div class="dub-turn-indicator">Dogruluk: %${accuracy}</div>
+      `;
+      feedbackEl.hidden = false;
+    }
+    if (this.turnRecordBtn) this.turnRecordBtn.disabled = true;
+    if (this.turnContinueBtn) this.turnContinueBtn.disabled = false;
+    this.pendingContinueAction = () => {
       this.summary.push({ line, words, accuracy_percent: accuracy });
       this.lineIndex += 1;
       this.advanceLine();
-    });
+    };
     this.setStatus("Tamamlandi.");
   }
 
@@ -777,21 +872,19 @@ export class DubScene extends Phaser.Scene {
   private renderOtherTurn(line: DubScriptLine): void {
     this.screen = "other-turn";
     const total = this.script!.lines.length;
+    // Bu ekranda kayit YOK (bkz. dosya basi mimari notu - repligin sahibi
+    // sen degilsin) - bu yuzden konsolda sadece "tekrar dinle" ve "devam
+    // et" ikonlari var, orta (yesil/mikrofon) dugme hic render edilmiyor.
     const node = this.mount(`
-      <div class="dialogue-panel dub-panel">
-        <div class="dialogue-header">
-          <strong>${this.escapeHtml(line.speaker)} konusuyor</strong>
-          <span>Replik ${this.lineIndex + 1}/${total}</span>
-          <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
-        </div>
-        <div class="dialogue-status" data-role="status">Dinliyorsun...</div>
-        <video class="dub-video" data-role="line-video" muted playsinline></video>
-        <div class="dub-body dub-col">
-          <div class="dub-turn-indicator">"${this.escapeHtml(line.text)}"</div>
-          <div class="dub-row">
-            <button type="button" class="dub-btn secondary" data-action="replay">Tekrar Dinle</button>
-            <button type="button" class="dub-btn" data-action="continue" disabled>Devam Et</button>
-          </div>
+      <div class="dialogue-panel dub-panel dub-panel--studio">
+        <div class="dialogue-status dub-studio-status" data-role="status">${this.escapeHtml(line.speaker)}: Dinliyorsun...</div>
+        <div class="dub-studio-caption">&ldquo;${this.escapeHtml(line.text)}&rdquo;</div>
+        <div class="dub-studio-stage">
+          <div class="dub-studio-tag">Replik ${this.lineIndex + 1}/${total}</div>
+          <video class="dub-studio-video" data-role="line-video" muted playsinline></video>
+          <button type="button" class="dub-console-btn dub-console-btn--back" data-action="exit" title="Geri don" aria-label="Geri don">BACK</button>
+          <button type="button" class="dub-console-btn dub-console-btn--replay" data-action="replay" title="Tekrar Dinle" aria-label="Tekrar Dinle">${ICON_REPLAY}</button>
+          <button type="button" class="dub-console-btn dub-console-btn--continue" data-action="continue" disabled title="Devam Et" aria-label="Devam Et">${ICON_CONTINUE}</button>
         </div>
       </div>
     `);
@@ -807,6 +900,7 @@ export class DubScene extends Phaser.Scene {
       void playReference();
     });
     continueBtn.addEventListener("click", () => {
+      if (continueBtn.disabled) return;
       this.lineIndex += 1;
       this.advanceLine();
     });

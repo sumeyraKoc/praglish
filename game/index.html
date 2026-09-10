@@ -227,6 +227,11 @@
       align-items: center;
       justify-content: center;
     }
+    /* "?" yardim ikonunun HEMEN SOLUNDA, ayni sekilde konumlanan ikinci bir
+       daire dugme - Ilerleme Defteri'ni acar (bkz. DubScene.ts
+       renderJournal). .dub-help gibi kendi konteynerine sarilmadan
+       dogrudan absolute konumlandi (basit tek-dugme, acilir balonu yok). */
+    .dub-journal-icon { position: absolute; right: 56px; top: 50%; transform: translateY(-50%); font-size: 16px; }
     .dub-help-tooltip {
       position: absolute;
       top: calc(100% + 10px);
@@ -544,10 +549,28 @@
     .paper-meter > i { display: block; height: 16px; border: 2px solid #665d49; background: #b7aa7c; }
     .paper-meter > i b { display: block; height: 100%; background: #52768a; }
     .paper-meter.error > i b { background: #a85454; }
+    .paper-meter.muted { opacity: 0.6; }
     .idiom-card { display: flex; gap: 12px; align-items: center; padding: 12px; margin-bottom: 10px; border: 2px solid #756a50; background: rgba(255,249,211,.18); }
     .idiom-card > span { display: grid; place-items: center; width: 34px; height: 34px; background: #a85454; color: #eadca5; }
     .idiom-card div { display: grid; gap: 4px; }
     .idiom-card small { color: #655e50; }
+
+    /* DubScene - "Ilerleme Defteri" (renderJournal): Sumeyra'nin genel
+       DashboardScene'inin (bkz. DashboardScene.ts renderShell / .progress-
+       dashboard yukarida) AYNI kabugu (ayni boyut, ayni baslik/alt baslik,
+       ayni "CLOSE" dugmesi) burada BIREBIR tekrar kullanilir - degisen tek
+       sey .paper-book icindeki icerik. Sekme (.paper-tabs) yok, bu yuzden
+       .paper-book'u basligin hemen altina degil, sekmelerin normalde
+       birakacagi bosluk kadar asagi aliyoruz (margin-top). .paper-scroll
+       varsayilan olarak scroll-bar gosterir (bkz. yukaridaki taban kural) -
+       burada KASITLI OLARAK kapatildi (overflow: hidden) ve satir araliklari
+       sikilastirildi, boylece defter scroll-bar olmadan tek bakista okunur. */
+    .dub-journal-dashboard .paper-book { margin-top: 34px; }
+    .dub-journal-dashboard .paper-scroll { overflow: hidden; }
+    .dub-journal-dashboard .paper-meter { margin: 8px 0; }
+    .dub-journal-dashboard .journal-script { margin-bottom: 10px; }
+    .dub-journal-dashboard .journal-script:last-child { margin-bottom: 0; }
+    .dub-journal-dashboard .journal-script > b { display: block; font-size: 13px; letter-spacing: 0.3px; margin-bottom: 4px; color: #4a3418; }
 
     .dub-launcher {
       height: 48px;

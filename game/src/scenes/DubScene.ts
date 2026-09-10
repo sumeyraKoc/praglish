@@ -28,7 +28,7 @@ import { DubApiClient, DubApiError, DubScript, DubScriptLine, WordVerdict } from
  *      orijinal sese geri dusulur. Digerleri tam ses seviyesinde kalir.
  */
 
-type Screen = "start" | "your-turn" | "other-turn" | "finished";
+type Screen = "start" | "your-turn" | "other-turn" | "finished" | "journal";
 
 interface SummaryEntry {
   line: DubScriptLine;
@@ -515,6 +515,7 @@ export class DubScene extends Phaser.Scene {
         <div class="dub-levels-header">
           <button type="button" class="dub-wood-btn dub-wood-btn--back" data-action="exit" aria-label="Geri don">BACK</button>
           <div class="dub-wood-banner">LISTEN &amp; REPEAT</div>
+          <button type="button" class="dub-help-icon dub-journal-icon" data-action="open-journal" aria-label="Ilerleme Defteri" title="Ilerleme Defteri">&#128214;</button>
           <div class="dub-help" data-role="help">
             <button type="button" class="dub-help-icon" data-action="toggle-help" aria-label="Yardim">?</button>
             <div class="dub-help-tooltip" role="tooltip">
@@ -529,6 +530,8 @@ export class DubScene extends Phaser.Scene {
         </div>
       </div>
     `);
+
+    node.querySelector('[data-action="open-journal"]')?.addEventListener("click", () => this.renderJournal());
 
     const helpEl = node.querySelector('[data-role="help"]') as HTMLElement | null;
     const helpToggle = node.querySelector('[data-action="toggle-help"]');
@@ -553,6 +556,105 @@ export class DubScene extends Phaser.Scene {
 
     this.levelsEl = node.querySelector('[data-role="levels"]') as HTMLElement;
     if (this.availableScripts.length > 0) this.renderLevelMap();
+  }
+
+  // ---------------------------------------------------------------------
+  // "Ilerleme Defteri" - Sumeyra'nin RoomScene/LibraryScene/StudioScene'e
+  // ekledigi genel DashboardScene'in (bkz. DashboardScene.ts renderShell) AYNI
+  // kabugunu (.progress-dashboard/.progress-header/.paper-close/.paper-book/
+  // .paper-page/.book-spine - hepsi index.html'de tanimli, boyutu da dahil
+  // DEGISTIRILMEDEN) burada BIREBIR tekrar kullanir; degisen tek sey icerik:
+  // DashboardScene'in genel RPG istatistikleri (grammar/vocab/idiom) yerine
+  // bu sahnenin kendi ilerlemesi (script/karakter bazli ortalama dogruluk -
+  // bkz. loadCompletionStore) gosterilir. Sekme (paper-tabs) yok - tek bir
+  // OZET+SENARYOLAR sayfasi yeterli. Kapat butonu "CLOSE" - klavye P/ESC
+  // kisayolu bu ekranda yok, bu yuzden DashboardScene'deki "P / ESC · CLOSE"
+  // yerine sade "CLOSE" kullanilir. Ayri bir sahneye gecmek (DashboardScene)
+  // yerine bunu DubScene'in KENDI ekrani yapmamizin sebebi: veri modeli farkli
+  // (script/karakter ilerlemesi DashboardScene'in API'siyle uyusmuyor).
+  // Kapat/CLOSE her zaman renderStart()'a doner (defter sadece Listen &
+  // Repeat ekranindan acilabildigi icin ana menuye degil, oraya geri donmek
+  // dogru davranis).
+  // ---------------------------------------------------------------------
+
+  private renderJournal(): void {
+    this.screen = "journal";
+    const store = this.loadCompletionStore();
+    const scripts = this.availableScripts;
+
+    const allCompletions: number[] = [];
+    let completedCharacterCount = 0;
+    for (const script of scripts) {
+      for (const character of script.characters) {
+        const value = store[script.id]?.[character];
+        if (value !== undefined) {
+          allCompletions.push(value);
+          completedCharacterCount += 1;
+        }
+      }
+    }
+    const scriptsStarted = scripts.filter((script) =>
+      script.characters.some((character) => store[script.id]?.[character] !== undefined),
+    ).length;
+    const averageAccuracy = allCompletions.length
+      ? Math.round(allCompletions.reduce((sum, value) => sum + value, 0) / allCompletions.length)
+      : 0;
+    const bestAccuracy = allCompletions.length ? Math.round(Math.max(...allCompletions)) : 0;
+
+    const overviewHtml = `
+      <div class="paper-stat-grid">
+        <div><span>DENENEN SENARYO</span><strong>${scriptsStarted}/${scripts.length}</strong></div>
+        <div><span>TAMAMLANAN KARAKTER</span><strong>${completedCharacterCount}</strong></div>
+        <div><span>ORTALAMA DOGRULUK</span><strong>%${averageAccuracy}</strong></div>
+        <div><span>EN IYI SONUC</span><strong>%${bestAccuracy}</strong></div>
+      </div>
+    `;
+
+    const scriptsHtml = scripts.length
+      ? scripts
+          .map((script) => {
+            const rows = script.characters
+              .map((character) => {
+                const value = store[script.id]?.[character];
+                const tried = value !== undefined;
+                const pct = tried ? Math.round(value) : 0;
+                const label = tried ? `%${pct}` : "&mdash;";
+                return `
+                  <div class="paper-meter${tried ? "" : " muted"}">
+                    <span>${this.escapeHtml(character)}</span>
+                    <i><b style="width:${pct}%"></b></i>
+                    <strong>${label}</strong>
+                  </div>
+                `;
+              })
+              .join("");
+            return `<div class="journal-script"><b>${this.escapeHtml(script.title)}</b>${rows}</div>`;
+          })
+          .join("")
+      : `<div class="paper-empty">Henuz senaryo yuklenmedi.</div>`;
+
+    this.mount(
+      `
+      <section class="progress-dashboard dub-journal-dashboard" aria-label="Ilerleme defteri">
+        <header class="progress-header">
+          <div><strong>PRAGLISH JOURNAL</strong><span>MY LEARNING ADVENTURE</span></div>
+          <button type="button" class="paper-close" data-action="exit">CLOSE</button>
+        </header>
+        <div class="paper-book">
+          <section class="paper-page left">
+            <h1>OZET</h1>
+            <div class="paper-scroll">${overviewHtml}</div>
+          </section>
+          <div class="book-spine"></div>
+          <section class="paper-page right">
+            <h1>SENARYOLAR</h1>
+            <div class="paper-scroll">${scriptsHtml}</div>
+          </section>
+        </div>
+      </section>
+    `,
+      () => this.renderStart(),
+    );
   }
 
   private startScene(script: DubScript, character: string): void {

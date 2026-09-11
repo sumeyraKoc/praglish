@@ -9,6 +9,7 @@ from core.database import SessionLocal, get_db
 from models.models import Dialogue, GameSession, LearningTurnEvent, User
 from services.ai_client import evaluate_and_respond, extract_utterance
 from services.dialogue_history import build_evaluator_history
+from services.extraction_eligibility import should_extract_after_turn
 from services.learning_analytics import LearningAnalyticsService
 from services.reward_engine import RewardEngine
 from services.scenario_engine import ScenarioEngine
@@ -72,6 +73,19 @@ async def process_turn(
     if not session.is_active:
         raise HTTPException(status_code=400, detail="Session is closed")
 
+    # Bir onceki kullanici turu reddedildiyse sistemin son cevabi koctur.
+    # Koctan hemen sonra girilen cumle genellikle onerilen duzeltmenin tekraridir;
+    # oyuncunun bagimsiz dil seviyesini sisirmemesi icin extractor'a verilmez.
+    previous_turn = (
+        db.query(LearningTurnEvent)
+        .filter(LearningTurnEvent.session_id == session.id)
+        .order_by(LearningTurnEvent.created_at.desc(), LearningTurnEvent.id.desc())
+        .first()
+    )
+    should_extract = should_extract_after_turn(
+        previous_turn.outcome if previous_turn is not None else None
+    )
+
     # Tum gercek NPC mesajlarini ve yalnizca kabul edilmis kullanici mesajlarini al.
     dialogues = (
         db.query(Dialogue)
@@ -93,10 +107,9 @@ async def process_turn(
     # (ai container ayakta olmasa bile bu route test edilebilsin)
     result = await evaluate_and_respond(payload)
 
-    # CorrectExtractor yalnizca kabul edilen kullanimlari, IncorrectExtractor
-    # yalnizca reddedilen cumledeki somut hatalari sayar. Extractor analytics
-    # oldugu icin gecici bir AI/DB hatasi oyun turunu bloke etmez.
-    extraction_payload = ExtractionRequest(utterance=request.user_text)
+    # NPC'den sonraki bagimsiz kullanici cumlesi kabul edilmisse CorrectExtractor,
+    # reddedilmisse IncorrectExtractor kullanilir. Koctan sonraki yanit iki
+    # extractor'a da verilmez. Analytics hatalari oyun turunu bloke etmez.
     # Odul motoru - result Pydantic nesnesi, .get() degil dogrudan attribute erisimi
     reward_info = RewardEngine.process_turn_reward(
         db=db, user_id=session.user_id, is_accepted=result.accepted
@@ -171,14 +184,15 @@ async def process_turn(
 
     db.commit()
 
-    background_tasks.add_task(
-        _record_extraction_background,
-        extraction_payload,
-        outcome="correct" if result.accepted else "incorrect",
-        user_id=session.user_id,
-        session_id=session.id,
-        dialogue_id=dialogue_id,
-        utterance=request.user_text,
-    )
+    if should_extract:
+        background_tasks.add_task(
+            _record_extraction_background,
+            ExtractionRequest(utterance=request.user_text),
+            outcome="correct" if result.accepted else "incorrect",
+            user_id=session.user_id,
+            session_id=session.id,
+            dialogue_id=dialogue_id,
+            utterance=request.user_text,
+        )
 
     return result

@@ -59,27 +59,28 @@ const NOTE_IMAGES = [
   "/assets/dub/ui/note2.png",
   "/assets/dub/ui/note3.png",
   "/assets/dub/ui/note4.png",
-];
+] as const;
 // Mevcut 4 script icin not gorselinin kosesindeki cizime (bos / buyutec /
 // orumcek agi / roket) gore ELDE tema eslesmesi yapildi (orn. Superman ->
 // roketli not) - listede olmayan (gelecekte eklenecek) script'ler icin
-// index'e gore NOTE_IMAGES dongusune dusulur (bkz. noteImageForScript).
-const SCRIPT_NOTE_OVERRIDES: Record<string, string> = {
-  "charade-44": NOTE_IMAGES[1], // buyutec - casusluk/gerilim sahnesi
-  "superman-caverns": NOTE_IMAGES[3], // roket - bilim-kurgu/superkahraman
-  "notld-cemetery": NOTE_IMAGES[2], // orumcek agi - korku sahnesi
-  "gulliver-wedding": NOTE_IMAGES[0], // duz kagit - masalsi macera
+// index'e gore NOTE_IMAGES dongusune dusulur (bkz. noteAssetForScript).
+const SCRIPT_NOTE_INDEX: Record<string, number> = {
+  "charade-44": 1, // buyutec - casusluk/gerilim sahnesi
+  "superman-caverns": 3, // roket - bilim-kurgu/superkahraman
+  "notld-cemetery": 2, // orumcek agi - korku sahnesi
+  "gulliver-wedding": 0, // duz kagit - masalsi macera
 };
-function noteImageForScript(scriptId: string, index: number): string {
-  return SCRIPT_NOTE_OVERRIDES[scriptId] ?? NOTE_IMAGES[index % NOTE_IMAGES.length];
+function noteAssetForScript(scriptId: string, index: number): { url: string; variant: number } {
+  const noteIndex = SCRIPT_NOTE_INDEX[scriptId] ?? index % NOTE_IMAGES.length;
+  return { url: NOTE_IMAGES[noteIndex]!, variant: noteIndex + 1 };
 }
 // Karakter isim dugmelerine (referans gorseldeki renkli "player" pillerinin
 // yerini alan, GERCEK karakter adlarini tasiyan dugmeler) dongusel renk
 // atamak icin kucuk bir palet - hangi karakterin "onemli" oldugunu degil,
 // sadece gorsel cesitliligi ifade eder.
-const CHARACTER_PILL_COLORS = ["#6bbf6b", "#e0668f", "#e8a23c", "#8f7ae0", "#4fb8c9"];
+const CHARACTER_PILL_COLORS = ["#6bbf6b", "#e0668f", "#e8a23c", "#8f7ae0", "#4fb8c9"] as const;
 function characterPillColor(index: number): string {
-  return CHARACTER_PILL_COLORS[index % CHARACTER_PILL_COLORS.length];
+  return CHARACTER_PILL_COLORS[index % CHARACTER_PILL_COLORS.length]!;
 }
 
 // ---------------------------------------------------------------------
@@ -326,7 +327,7 @@ export class DubScene extends Phaser.Scene {
       )
       .join("");
 
-    const noteUrl = noteImageForScript(script.id, index);
+    const note = noteAssetForScript(script.id, index);
     // ONEMLI: buyuk harfe cevirmeyi CSS'in text-transform:uppercase'ine
     // BIRAKMIYORUZ - sayfa <html lang="tr"> oldugu icin tarayici "i" harfini
     // Turkce kurallarina gore noktali "I" (İ) yapiyor ("Gulliver's" ->
@@ -339,9 +340,11 @@ export class DubScene extends Phaser.Scene {
     const displayTitle = this.escapeHtml(script.title.toUpperCase());
 
     return `
-      <div class="dub-note-card" style="background-image:url('${noteUrl}')">
-        <div class="dub-note-title">${displayTitle}</div>
-        <div class="dub-note-chars">${charsHtml}</div>
+      <div class="dub-note-card" data-note-variant="${note.variant}" style="background-image:url('${note.url}')">
+        <div class="dub-note-content">
+          <div class="dub-note-title">${displayTitle}</div>
+          <div class="dub-note-chars">${charsHtml}</div>
+        </div>
       </div>
     `;
   }
@@ -351,6 +354,7 @@ export class DubScene extends Phaser.Scene {
   // ---------------------------------------------------------------------
 
   private teardown(): void {
+    this.setScreenBackdrop(null);
     this.playbackAbort = true;
     this.stopCurrentAudio();
     this.clearRecordAutoStop();
@@ -409,10 +413,27 @@ export class DubScene extends Phaser.Scene {
     const dom = this.add.dom(640, 360).createFromHTML(html);
     this.panel = dom;
     const node = dom.node as HTMLElement;
+    const backdrop = node.querySelector(".dub-panel--levels")
+      ? "levels"
+      : node.querySelector(".dub-panel--studio")
+        ? "studio"
+        : null;
+    this.setScreenBackdrop(backdrop);
     this.statusEl = node.querySelector('[data-role="status"]');
     const closeBtn = node.querySelector('[data-action="exit"]');
     closeBtn?.addEventListener("click", () => onExit());
     return node;
+  }
+
+  /**
+   * Sahne secim masasini ve seslendirme studyosunu FIT canvas'in disindaki
+   * letterbox alanlarina da yayar. Ozet/ilerleme defterinde ve baska bir
+   * Phaser sahnesine geciste iki body sinifi da hemen temizlenir.
+   */
+  private setScreenBackdrop(backdrop: "levels" | "studio" | null): void {
+    document.body.classList.toggle("dub-levels-backdrop", backdrop === "levels");
+    document.body.classList.toggle("dub-studio-backdrop", backdrop === "studio");
+    this.cameras.main.setBackgroundColor(backdrop ? "rgba(0, 0, 0, 0)" : "#15111f");
   }
 
   /**
@@ -559,7 +580,7 @@ export class DubScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------
-  // "Ilerleme Defteri" - Sumeyra'nin RoomScene/LibraryScene/StudioScene'e
+  // "Ilerleme Defteri" - RoomScene/LibraryScene'e
   // ekledigi genel DashboardScene'in (bkz. DashboardScene.ts renderShell) AYNI
   // kabugunu (.progress-dashboard/.progress-header/.paper-close/.paper-book/
   // .paper-page/.book-spine - hepsi index.html'de tanimli, boyutu da dahil

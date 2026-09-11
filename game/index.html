@@ -9,6 +9,45 @@
     body { display: grid; place-items: center; }
     #game { width: 100%; height: 100%; }
     canvas { image-rendering: pixelated; }
+    /* Listen & Repeat'in sahne/karakter secim ekraninda masa gorseli
+       yalnizca 1280x720 Phaser canvas'ina degil, tarayicinin gorunur
+       alaninin tamamına yayilir. FIT modunun diger sahnelerde biraktigi
+       bosluklar bu ekranda ayni gorselle dolar; diger sahneler bu body
+       sinifini kullanmadigi icin mevcut olcekleme davranislari degismez. */
+    body.dub-levels-backdrop {
+      background-color: #171020;
+      background-image: url("/assets/dub/ui/script-select-bg.jpg");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+    body.dub-studio-backdrop {
+      background-color: #171020;
+      background-image: url("/assets/dub/ui/studio-bg.jpg");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+    }
+    /* Studio gorseli merkezdeki monitor/konsol kartinda net kalir. Canvas
+       disina tasan kopya ise atmosferik bir uzanti gibi koyulastirilip
+       yumusatilir; boylece ayni konsolun iki kez cizildigi hissi azalir. */
+    body.dub-studio-backdrop::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background: rgba(8, 6, 14, 0.42);
+      backdrop-filter: blur(12px);
+    }
+    body.dub-studio-backdrop #game {
+      position: relative;
+      z-index: 1;
+    }
+    body.dub-levels-backdrop #game,
+    body.dub-levels-backdrop canvas,
+    body.dub-studio-backdrop #game,
+    body.dub-studio-backdrop canvas { background: transparent !important; }
     .dialogue-panel {
       box-sizing: border-box;
       width: 760px;
@@ -31,6 +70,54 @@
       padding-right: 6px;
       overflow-y: auto;
       scrollbar-color: #5d4c72 transparent;
+    }
+    .dialogue-scrollable {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 32px;
+      gap: 8px;
+      height: 105px;
+    }
+    .dialogue-scrollable .dialogue-messages {
+      height: 100%;
+      scrollbar-width: none;
+    }
+    .dialogue-scrollable .dialogue-messages::-webkit-scrollbar { display: none; }
+    .dialogue-scroll-controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+    .dialogue-scroll-button {
+      box-sizing: border-box;
+      width: 28px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      touch-action: none;
+    }
+    .dialogue-scroll-button::before {
+      content: "";
+      display: block;
+      width: 0;
+      height: 0;
+      margin: auto;
+      border-right: 12px solid transparent;
+      border-left: 12px solid transparent;
+      filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.25));
+    }
+    .dialogue-scroll-button.up::before { border-bottom: 17px solid #5d4c72; }
+    .dialogue-scroll-button.down::before { border-top: 17px solid #5d4c72; }
+    .dialogue-scroll-button:hover::before { border-bottom-color: #7b6795; border-top-color: #7b6795; }
+    .dialogue-scroll-button:active::before { border-bottom-color: #ffd166; border-top-color: #ffd166; }
+    .dialogue-scroll-track {
+      width: 25px;
+      height: 3px;
+      border-radius: 2px;
+      background: #5d4c72;
     }
     .dialogue-system { margin: 26px 0 0; text-align: center; color: #a99dbd; }
     .dialogue-message { display: grid; grid-template-columns: 92px 1fr; gap: 10px; margin: 0 0 9px; }
@@ -165,11 +252,9 @@
       height: 660px;
       display: flex;
       flex-direction: column;
-      border-color: #c9922f;
-      background-color: #171020;
-      background-image: url("/assets/dub/ui/script-select-bg.jpg");
-      background-size: cover;
-      background-position: center;
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
     }
     /* Bu ekranin basligi klasik .dialogue-header (kalin yazi + "x") degil -
        referans "SELECT A SCRIPT"/"BACK" ahsap afisleri gibi UC AYRI eleman:
@@ -297,19 +382,43 @@
       position: relative;
       box-sizing: border-box;
       min-height: 230px;
-      padding: 74px 56px 48px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 8px;
       background-repeat: no-repeat;
       background-size: 100% 100%;
       background-position: center;
+      transform-origin: center;
+      /* 1) kagidin hemen altindaki keskin temas golgesi,
+         2) masaya dusen orta yumusak golge,
+         3) cok hafif/genis ortam golgesi. PNG'nin alfa sinirini izleyen
+         drop-shadow kullanildigi icin dikdortgen bir kutu gibi gorunmez. */
       filter:
-        drop-shadow(0 3px 3px rgba(20, 12, 4, 0.55))
-        drop-shadow(0 18px 20px rgba(20, 12, 4, 0.4));
+        drop-shadow(0 2px 1px rgba(28, 12, 3, 0.82))
+        drop-shadow(0 7px 6px rgba(28, 12, 3, 0.5))
+        drop-shadow(0 18px 16px rgba(28, 12, 3, 0.28));
     }
+    /* Gercek bir masaya elle birakilmis gibi her kagidin acisi ve dikey
+       oturusu cok az farkli. Degerler bilerek 1 derecenin altinda: metnin
+       okunabilirligini bozmadan kusursuz grid hissini kiriyor. */
+    .dub-note-card[data-note-variant="1"] { transform: translateY(2px) rotate(-0.65deg); }
+    .dub-note-card[data-note-variant="2"] { transform: translateY(-1px) rotate(0.55deg); }
+    .dub-note-card[data-note-variant="3"] { transform: translateY(1px) rotate(0.45deg); }
+    .dub-note-card[data-note-variant="4"] { transform: translateY(-2px) rotate(-0.5deg); }
+    /* Her PNG'nin on sayfasindaki bos/yazilabilir alan farkli. Baslik ve
+       karakterler tum kartin merkezine degil bu alana oturur; boylece
+       buyutec, ag ve roket cizimlerinin ustune binmez. */
+    .dub-note-content {
+      position: absolute;
+      left: 15%;
+      top: 27%;
+      width: 70%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .dub-note-card[data-note-variant="1"] .dub-note-content { left: 23%; top: 27%; width: 66%; }
+    .dub-note-card[data-note-variant="2"] .dub-note-content { left: 8%; top: 29%; width: 57%; }
+    .dub-note-card[data-note-variant="3"] .dub-note-content { left: 16%; top: 30%; width: 70%; }
+    .dub-note-card[data-note-variant="4"] .dub-note-content { left: 13%; top: 31%; width: 70%; }
     /* Baslik SADECE film/dizi adi (bkz. api/routes/dub.py title alanlari -
        artik "- sahne aciklamasi" eki yok), bu yuzden kisa ve tek/iki satirda
        kaliyor. Stil, kullanicinin referans aldigi afisteki gibi kalin,
@@ -320,12 +429,15 @@
        noktali "İ" yapip basliklari bozuyordu (bkz. renderLevelItemHtml). */
     .dub-note-title {
       width: 100%;
-      font: 900 22px "Arial Black", Arial, sans-serif;
-      color: #1c130a;
+      font: 900 20px "Courier New", Courier, monospace;
+      color: #352416;
       text-align: center;
-      letter-spacing: 0.5px;
-      line-height: 1.2;
-      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+      letter-spacing: -0.35px;
+      line-height: 1.08;
+      opacity: 0.9;
+      mix-blend-mode: multiply;
+      text-shadow: 0.35px 0.35px 0 rgba(74, 43, 22, 0.35);
+      transform: rotate(-0.35deg);
     }
     .dub-note-chars { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
     .dub-char-pill {
@@ -362,7 +474,13 @@
        satirlik durum metninin (.dub-studio-status) icine gomulu - ayrica
        panel genisligi 800->860px yapilarak bosalan dikey alan ekrani
        buyutmek icin kullanildi (bkz. DubScene.ts renderYourTurn/renderOtherTurn). */
-    .dub-panel--studio { width: 1000px; height: auto; }
+    .dub-panel--studio {
+      width: 1000px;
+      height: auto;
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+    }
     .dub-studio-status { margin-bottom: 8px; }
     .dub-studio-caption {
       margin: 0 0 8px;
@@ -406,14 +524,22 @@
       transition: transform 0.12s ease, filter 0.12s ease;
     }
     .dub-console-btn svg { width: 55%; height: 55%; fill: #fff8ec; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7)); }
+    /* Mikrofon simgesi */
+    .dub-console-btn--continue svg {
+      transform: rotate(-15deg);
+    }
     .dub-console-btn:hover:not(:disabled) { transform: scale(1.08); }
     .dub-console-btn:active:not(:disabled) { transform: scale(0.92); }
     .dub-console-btn:disabled { cursor: default; filter: grayscale(0.75) brightness(0.55); }
-    .dub-console-btn--replay { left: 58.94%; width: 9.89%; height: 5.34%; }
-    .dub-console-btn--record { left: 70.02%; width: 8.7%; height: 5.34%; }
+    /* Gorseldeki renkli tuslar perspektifli ve ayni genislikte degil.
+       Bu yuzden ikonlar tek bir ortak ofset yerine, yakin plan uzerinden
+       olculen kendi optik merkezlerine ayri ayri oturtulur. */
+    .dub-console-btn--replay { left: 58.32%; top: 91.95%; width: 9.89%; height: 5.34%; }
+    .dub-console-btn--record { left: 70.1%; top: 91.97%; width: 8.7%; height: 5.34%; }
     .dub-console-btn--record.recording svg { fill: #ffb3b3; }
     .dub-console-btn--record.recording { animation: dub-console-pulse 1s ease-in-out infinite; }
-    .dub-console-btn--continue { left: 80.7%; top: 92.82%; width: 3.76%; height: 4.75%; }
+    .dub-console-btn--continue { left: 80.648%; top: 92.30%; width: 3.76%; height: 4.75%; }
+
     @keyframes dub-console-pulse {
       0%, 100% { filter: drop-shadow(0 0 0 rgba(255, 90, 90, 0)); }
       50% { filter: drop-shadow(0 0 10px rgba(255, 90, 90, 0.85)); }
@@ -482,10 +608,6 @@
     .dub-summary-line { margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid #3a2f52; overflow: auto; }
     .dub-summary-line strong { color: #78dce8; }
     .dialogue-status.dub-status-error { color: #ff8e8e; }
-
-    /* StudioScene icindeki (Phaser DOM elemani) giris butonu - artik
-       oyunun disina tasan sabit bir kose butonu degil, RoomScene/LibraryScene
-       'den "S" tusuyla girilen kendi sahnesinin ici. */
 
     /* Pixel-paper ilhamli ilerleme defteri. Phaser DOM container'iyle birlikte
        canvas olceginde hareket eder; normal odalarda DOM'a hic eklenmez. */
@@ -571,18 +693,6 @@
     .dub-journal-dashboard .journal-script { margin-bottom: 10px; }
     .dub-journal-dashboard .journal-script:last-child { margin-bottom: 0; }
     .dub-journal-dashboard .journal-script > b { display: block; font-size: 13px; letter-spacing: 0.3px; margin-bottom: 4px; color: #4a3418; }
-
-    .dub-launcher {
-      height: 48px;
-      padding: 0 24px;
-      border: 2px solid #78dce8;
-      border-radius: 8px;
-      background: rgba(33, 24, 47, 0.92);
-      color: #78dce8;
-      font: 700 16px Arial, sans-serif;
-      cursor: pointer;
-    }
-    .dub-launcher:hover { background: #78dce8; color: #0f0c17; }
 
     /* MenuScene - ana mod secim ekrani: kapali halde dikey "sirt" (spine)
        kartlar yan yana hafif bindirilmis durur (kitap sirtlari gibi), uzerine

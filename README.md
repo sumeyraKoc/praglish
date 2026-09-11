@@ -63,6 +63,10 @@ bağımlılık eklemeye gerek kalmadı:
 | STT | `gemini-3.5-transcribe`, verbatim mod | `whisper-large-v3-turbo` (`GROQ_STT_MODEL`) - Whisper zaten harfiyen yazar, dilbilgisini düzeltmez |
 | TTS | `gemini-3.1-flash-tts-preview`, 24 kHz WAV | `canopylabs/orpheus-v1-english` (`GROQ_TTS_MODEL`), zaten WAV döner |
 
+TTS harcamasını ayrı bir Gemini projesinde tutmak için isteğe bağlı
+`GEMINI_TTS_API_KEY` tanımlanabilir. Doluysa yalnızca TTS bu anahtarı
+kullanır; boşsa mevcut kurulumları bozmamak için `GEMINI_API_KEY` kullanılır.
+
 Not: Gemini ve Groq'un ses isimleri farklı (`Kore` vs. `hannah`/`troy`/...).
 `GroqTextToSpeechProvider` tanımadığı bir ses adı görürse (ör. varsayılan
 `Kore`) sessizce kendi varsayılanına düşer, hata vermez - oyun tarafının
@@ -350,12 +354,10 @@ yaptık:
    olduğunu bilmediğimiz için zorla değiştirmedik; `GEMINI_EVALUATOR_MODEL`
    ile isterseniz siz ayarlayabilirsiniz (boşsa `GEMINI_MODEL` ile aynı,
    yani eski davranış).
-2. **Gönderilen konuşma geçmişini sınırlama.** Oda ziyareti uzadıkça
-   `dialogue_history` büyüyor ve her iki çağrıya da (evaluator + npc/correction)
-   her seferinde daha fazla token gidiyor. `api/services/dialogue_history.py`
-   artık yalnızca son `MAX_DIALOGUE_HISTORY_TURNS` (varsayılan 12, yani ~6
-   karşılıklı konuşma) satırı gönderiyor; DB'den hiçbir şey silinmiyor, sadece
-   o turda modele giden prompt küçülüyor.
+2. **Filtrelenmiş tam konuşma geçmişi.** Evaluator + NPC/correction
+   çağrılarına mevcut oda ziyaretindeki tüm kabul edilmiş kullanıcı mesajları
+   ve gerçek NPC cevapları gönderiliyor. Reddedilmiş kullanıcı cümleleri ile
+   koç düzeltmeleri bağlama alınmıyor; geçmişe sayısal bir sınır uygulanmıyor.
 3. **Daha kısa NPC cevapları.** `ai/modules/npc.py`'deki sistem promptuna
    "1-2 kısa cümle, en fazla 3" kısıtı eklendi — hem oyun içi diyalog için
    daha doğal (bu bir sohbet, deneme yazısı değil), hem de daha az çıktı

@@ -1,21 +1,51 @@
 import os
+import sys
 from collections import Counter
 
 from dotenv import load_dotenv
 
-from ai.modules import (
-    CorrectionModule,
-    CorrectExtractor,
-    GeminiCorrectionProvider,
-    GeminiCorrectExtractionProvider,
-    GeminiIncorrectExtractionProvider,
-    GeminiPlausibilityEstimator,
-    GeminiTextGenerator,
-    LanguageEvaluator,
-    IncorrectExtractor,
-    NpcModule,
-    TextSpeechModule,
-)
+# Linux/Docker'da input() icin ok tuslariyla imlec hareketi, Home/End ve
+# yukari-asagi komut gecmisini etkinlestirir. Modul import edilince Python'in
+# satir okuma kancasini otomatik kurar.
+try:
+    import readline  # noqa: F401
+except ImportError:
+    # Readline bulunmayan bir platformda CLI temel input() ile yine calisir.
+    pass
+
+try:
+    # Repo kokunden `python -m ai.cli` olarak calistirildiginda.
+    from ai.modules import (
+        CorrectionModule,
+        CorrectExtractor,
+        GeminiCorrectionProvider,
+        GeminiCorrectExtractionProvider,
+        GeminiIncorrectExtractionProvider,
+        GeminiPlausibilityEstimator,
+        GeminiTextGenerator,
+        LanguageEvaluator,
+        IncorrectExtractor,
+        NpcModule,
+        TextSpeechModule,
+    )
+except ModuleNotFoundError as exc:
+    if exc.name != "ai":
+        raise
+    # Docker image'i ai/ icerigini dogrudan /app'e kopyalar; bu durumda
+    # cli.py'nin kardesi olan `modules` topini kullan.
+    from modules import (
+        CorrectionModule,
+        CorrectExtractor,
+        GeminiCorrectionProvider,
+        GeminiCorrectExtractionProvider,
+        GeminiIncorrectExtractionProvider,
+        GeminiPlausibilityEstimator,
+        GeminiTextGenerator,
+        LanguageEvaluator,
+        IncorrectExtractor,
+        NpcModule,
+        TextSpeechModule,
+    )
 from shared.schemas import (
     CorrectionInput,
     ExtractionRequest,
@@ -41,6 +71,40 @@ def create_barista() -> NPCIdentity:
         ],
         scenario_state={"drink": None, "size": None, "milk": None},
     )
+
+
+def create_librarian() -> NPCIdentity:
+    return NPCIdentity(
+        id="librarian_01",
+        name="Lina",
+        role="librarian",
+        user_role="player",
+        location="library",
+        personality="Warm, knowledgeable, patient, and concise",
+        tasks=[
+            NPCTask(id="book_topic", description="Learn or confirm the value of: book_topic"),
+            NPCTask(id="borrowing_intent", description="Learn or confirm the value of: borrowing_intent"),
+        ],
+        scenario_state={"book_topic": None, "borrowing_intent": None},
+    )
+
+
+def choose_scenario() -> tuple[NPCIdentity, str, str]:
+    print("Senaryo secin:")
+    print("  1) Cafe - Mia (barista)")
+    print("  2) Library - Lina (librarian)")
+
+    while True:
+        choice = input("Secim [1/2]: ").strip().lower()
+        if choice in {"1", "cafe"}:
+            return create_barista(), "Cafe", "Hi! I'm Mia. What can I get for you?"
+        if choice in {"2", "library"}:
+            return (
+                create_librarian(),
+                "Library",
+                "Hi! I'm Lina, the librarian. How can I help you today?",
+            )
+        print("Gecersiz secim. 1, 2, cafe veya library yazin.")
 
 
 def print_extraction(result: ExtractionResult) -> None:
@@ -80,7 +144,16 @@ def print_extraction(result: ExtractionResult) -> None:
 
 
 def run() -> None:
+    # Windows CMD/PowerShell -> `docker compose exec` hattinda UTF-8 olmayan
+    # tekil baytlar Python'in varsayilan `surrogateescape` davranisiyla
+    # \udcxx karakterlerine donusebilir. Pydantic bunlari JSON/UTF-8'e cevirirken
+    # hata verir. Gecersiz girisi replacement character'a cevirerek CLI'nin
+    # ikinci turda cokmesini engelle; normal UTF-8/ASCII metin aynen korunur.
+    if hasattr(sys.stdin, "reconfigure"):
+        sys.stdin.reconfigure(errors="replace")
+
     load_dotenv()
+    identity, scenario_name, opening_line = choose_scenario()
 
     speech = TextSpeechModule()
     api_key = os.getenv("GEMINI_API_KEY", "")
@@ -105,10 +178,10 @@ def run() -> None:
         api_key=api_key,
         model=model,
     )
-    npc = NpcModule(identity=create_barista(), generator=generator)
+    npc = NpcModule(identity=identity, generator=generator)
 
-    print("Cafe role-play başladı. Çıkmak için 'quit' yazın.")
-    print(f"NPC: Hi! I'm {npc.identity.name}. What can I get for you?")
+    print(f"{scenario_name} role-play başladı. Çıkmak için 'quit' yazın.")
+    print(f"NPC: {opening_line}")
 
     while True:
         terminal_input = input("You: ")
@@ -133,6 +206,7 @@ def run() -> None:
             f"| threshold = {evaluation.threshold:.1f}% "
             f"| accepted = {evaluation.accepted}"
         )
+        print(f"Evaluator reason: {evaluation.brief_reason}")
 
         extraction_request = ExtractionRequest(
             utterance=transcript,

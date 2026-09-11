@@ -25,6 +25,9 @@ services:
       # Gemini doluysa Gemini, degilse (ve Groq doluysa) Groq kullanilir -
       # bkz. ai/main.py > _active_ai_provider() ve README "AI saglayicisi".
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # Istege bagli: ayri/ucretli bir projeye aitse yalnizca TTS bunu kullanir;
+      # bos birakilirsa TTS geriye uyumlu olarak GEMINI_API_KEY'e duser.
+      - GEMINI_TTS_API_KEY=${GEMINI_TTS_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
       # Bos birakilirsa ai/main.py GEMINI_MODEL'e duser (bkz. .env.example).
       - GEMINI_EVALUATOR_MODEL=${GEMINI_EVALUATOR_MODEL:-}
@@ -57,9 +60,6 @@ services:
       - AI_SERVICE_URL=http://ai:8001
       - USE_MOCK_AI=${USE_MOCK_AI:-false}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
-      # Bir turda evaluator/NPC/correction'a gonderilen gecmis bu kadar satirla
-      # sinirlanir - bkz. api/services/dialogue_history.py ve .env.example.
-      - MAX_DIALOGUE_HISTORY_TURNS=${MAX_DIALOGUE_HISTORY_TURNS:-12}
     depends_on:
       db:
         condition: service_healthy

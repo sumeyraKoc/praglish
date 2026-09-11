@@ -1,4 +1,6 @@
 import Phaser from "phaser";
+import { PraglishApiClient } from "../services/PraglishApiClient";
+import { clearRememberedDialogues } from "../services/RoleplayMemory";
 
 interface ModeCard {
   id: string;
@@ -67,6 +69,11 @@ export class MenuScene extends Phaser.Scene {
   }
 
   public create(): void {
+    // Menu yeni bir roleplay ziyareti icin sinirdir. Oda gecisleri bu noktaya
+    // ugramadigi icin Maya ve Lina kendi ayri sohbetlerini hatirlamaya devam eder.
+    PraglishApiClient.resetAllSessions();
+    clearRememberedDialogues();
+
     this.cameras.main.setBackgroundColor("#15111f");
 
     const graphics = this.add.graphics();

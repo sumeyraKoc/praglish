@@ -214,6 +214,15 @@ def get_stt_provider() -> SpeechToTextProvider:
 
 @lru_cache
 def get_tts_provider() -> TextToSpeechProvider:
+    # TTS icin ayri bir Gemini projesi/anahtari tanimlanabilir. Bu anahtar
+    # yalnizca ses sentezinde kullanilir; evaluator, correction, NPC ve STT
+    # mevcut GEMINI_API_KEY/GROQ_API_KEY secimini kullanmaya devam eder.
+    dedicated_gemini_tts_key = _env("GEMINI_TTS_API_KEY")
+    if dedicated_gemini_tts_key:
+        return GeminiTextToSpeechProvider(
+            api_key=dedicated_gemini_tts_key,
+            model=_env("TTS_MODEL", "gemini-3.1-flash-tts-preview"),
+        )
     if _active_ai_provider() == "gemini":
         return GeminiTextToSpeechProvider(
             api_key=_env("GEMINI_API_KEY"),

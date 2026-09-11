@@ -45,6 +45,22 @@ class DialogueHistoryTests(unittest.TestCase):
 
         self.assertEqual(history, [])
 
+    def test_keeps_the_full_eligible_history_without_a_turn_limit(self):
+        dialogues = []
+        for index in range(10):
+            dialogues.extend(
+                [
+                    dialogue("user", f"Accepted message {index}.", True),
+                    dialogue("npc", f"NPC response {index}."),
+                ]
+            )
+
+        history = build_evaluator_history(dialogues)
+
+        self.assertEqual(len(history), 20)
+        self.assertEqual(history[0].text, "Accepted message 0.")
+        self.assertEqual(history[-1].text, "NPC response 9.")
+
 
 if __name__ == "__main__":
     unittest.main()

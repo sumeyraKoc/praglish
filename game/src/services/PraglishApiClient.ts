@@ -30,6 +30,27 @@ export interface TurnResponse {
   rewards: RewardInfo | null;
 }
 
+export interface TtsVoiceProfile {
+  voice: string;
+  style: string;
+}
+
+/** Role-play karakterlerinin Gemini TTS sesleri ve konusma yonlendirmeleri. */
+export const ROLEPLAY_TTS_PROFILES = {
+  librarian: {
+    voice: "Kore",
+    style: "Speak naturally and warmly as a patient, knowledgeable female librarian at a relaxed conversational pace.",
+  },
+  cafeNpc: {
+    voice: "Leda",
+    style: "Speak as a sweet, cheerful young woman working in a cafe. Sound friendly, bright, and natural at a relaxed conversational pace.",
+  },
+  coach: {
+    voice: "Gacrux",
+    style: "Speak as a deep, resonant, mature older man. Sound calm, authoritative, strong, supportive, and very clear at a measured pace.",
+  },
+} as const satisfies Record<string, TtsVoiceProfile>;
+
 export interface VocabularySubmitResponse {
   matched: boolean;
   already_earned: boolean;
@@ -106,10 +127,18 @@ export class ApiError extends Error {
 }
 
 export class PraglishApiClient {
+  private static readonly instances = new Set<PraglishApiClient>();
   private sessionPromise: Promise<number> | null = null;
   private userId: number | null = null;
 
-  constructor(private readonly config: PraglishSessionConfig = DEFAULT_SESSION_CONFIG) {}
+  constructor(private readonly config: PraglishSessionConfig = DEFAULT_SESSION_CONFIG) {
+    PraglishApiClient.instances.add(this);
+  }
+
+  /** Ana menuye donuldugunde mevcut sayfadaki tum roleplay oturumlarini bitirir. */
+  public static resetAllSessions(): void {
+    PraglishApiClient.instances.forEach((client) => client.resetSession());
+  }
 
   public startSession(): Promise<number> {
     if (!this.sessionPromise) {
@@ -122,20 +151,8 @@ export class PraglishApiClient {
   }
 
   /**
-   * Bu odayla olan mevcut oturumu unutur (sessionPromise'i temizler), oyuncunun
-   * userId'sini KORUR (kelime/coin ilerlemesi hep ayni kullaniciya bagli
-   * kalmali). Bir sonraki sendTurn()/submitVocabulary() cagrisi otomatik
-   * olarak yeni bir /api/session/start yapar - yani bos bir dialogue_history
-   * ile, NPC oyuncuyu ilk defa goruyormus gibi baslar.
-   *
-   * Phaser sahne siniflari (RoomScene/LibraryScene) SADECE BIR KEZ
-   * olusturulup oyun boyunca yeniden kullanildigi icin (scene.start() eski
-   * sahneyi yok etmez, sadece durdurup baslatir), buradaki `api` alani ve
-   * onun sessionPromise'i sahneler arasi gecislerde kendiliginden
-   * sifirlanmiyordu - bu da odaya ikinci kez girildiginde NPC'nin onceki
-   * ziyaretin tum konusmasini hatirlamasina yol aciyordu. Sahneler artik bu
-   * metodu "shutdown" (odadan cikis) aninda cagiriyor, boylece her yeni
-   * ziyaret gercekten sifirdan basliyor.
+   * Aktif oturum kimligini unutur; kalici kullanici/ilerleme kaydini silmez.
+   * Oda degisimlerinde degil, ana menuye donuldugunde cagirilir.
    */
   public resetSession(): void {
     this.sessionPromise = null;
@@ -225,14 +242,14 @@ export class PraglishApiClient {
    * NPC'nin metin cevabini sesli okumasi icin /api/speech/tts'i cagirir ve
    * calinabilir bir ses Blob'u dondurur (her zaman 24kHz mono audio/wav).
    */
-  public async synthesizeSpeech(text: string): Promise<Blob> {
+  public async synthesizeSpeech(text: string, profile?: TtsVoiceProfile): Promise<Blob> {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 30_000);
     try {
       const response = await fetch(`${API_BASE_URL}/api/speech/tts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify(profile ? { text, ...profile } : { text }),
         signal: controller.signal,
       });
       if (!response.ok) {

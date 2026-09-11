@@ -4,8 +4,11 @@ import { gridToScreen, IsoConfig, screenToGrid } from "../engine/IsometricMath";
 import { findPath, PathfindingGrid } from "../engine/PathFinder";
 import { IsoAvatar } from "../entities/IsoAvatar";
 import { isTextEntryEvent } from "../engine/DomInputGuard";
+import { attachDialogueScrollControls } from "../ui/DialogueScrollControls";
+import { getRememberedDialogue, rememberDialogueMessage } from "../services/RoleplayMemory";
 import {
   PraglishApiClient,
+  ROLEPLAY_TTS_PROFILES,
   TurnResponse,
   VocabularyProgressEntry,
   VocabularySubmitResponse,
@@ -103,15 +106,6 @@ export class LibraryScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Bu sahne sinifi oyun boyunca TEK BIR KEZ olusturulur (Phaser scene.start()
-    // eski sahneyi yok etmez, sadece durdurup yeniden baslatir) - yani `this.api`
-    // alani ve onun onbellekteki oturumu odaya her donusumuzde AYNI kalir. Odadan
-    // ayrilirken (firina gecince) oturumu sifirliyoruz ki bir sonraki giriste
-    // Lina oyuncuyu ilk defa goruyormus gibi baslasin - eski konusma DB'den
-    // silinmiyor (extractor/vocabulary analitigi etkilenmiyor), sadece yeni bir
-    // GameSession/dialogue_history ile baslıyoruz.
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.api.resetSession());
-
     this.cameras.main.setBackgroundColor("#292a2d");
     this.createPlayerAnimations();
     this.renderMap(this.cache.json.get(MAP_KEY) as LibraryMapData);
@@ -129,9 +123,15 @@ export class LibraryScene extends Phaser.Scene {
     void this.loadVocabularyProgress();
 
     this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (!this.dialogue.visible && !this.vocabPanel.visible) {
-        this.handleClickToWalk(pointer.worldX, pointer.worldY);
+      if (this.dialogue.visible) {
+        this.closeDialogue();
+        return;
       }
+      if (this.vocabPanel.visible) {
+        this.closeVocabPanel();
+        return;
+      }
+      this.handleClickToWalk(pointer.worldX, pointer.worldY);
     });
     // isTextEntryEvent guard'i: bir DOM input'u (orn. dublaj karakter secim
     // ekranindaki script <select>'i ya da diyalog/kelime input'lari) odaktayken
@@ -147,10 +147,6 @@ export class LibraryScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-B", (event: KeyboardEvent) => {
       if (isTextEntryEvent(event)) return;
       if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("RoomScene");
-    });
-    this.input.keyboard?.on("keydown-S", (event: KeyboardEvent) => {
-      if (isTextEntryEvent(event)) return;
-      if (!this.dialogue.visible && !this.vocabPanel.visible) this.scene.start("StudioScene");
     });
     this.input.keyboard?.on("keydown-M", (event: KeyboardEvent) => {
       if (isTextEntryEvent(event)) return;
@@ -352,7 +348,7 @@ export class LibraryScene extends Phaser.Scene {
       fontSize: "22px",
       color: "#f2c879",
     }).setScrollFactor(0).setDepth(100000);
-    this.add.text(24, 54, "Zemine tıkla · E: Etkileşim · B: Bakery · S: Studio · P: Progress · M: Menu", {
+    this.add.text(24, 54, "Zemine tıkla · E: Etkileşim · B: Bakery · P: Progress · M: Menu", {
       fontFamily: "Arial, sans-serif",
       fontSize: "15px",
       color: "#e1d9cb",
@@ -364,15 +360,37 @@ export class LibraryScene extends Phaser.Scene {
       color: "#291c20",
       backgroundColor: "#f2c879",
       padding: { x: 16, y: 9 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(100000).setVisible(false);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100000).setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        event.stopPropagation();
+        this.tryInteract();
+      });
 
-    this.vocabHint = this.add.text(640, 660, "E  ·  NAME IT", {
+    this.vocabHint = this.add.text(640, 660, "E  ·  WHAT’S THIS IN ENGLISH?", {
       fontFamily: "Arial Black, Arial, sans-serif",
       fontSize: "18px",
       color: "#182219",
       backgroundColor: "#8fd3a5",
       padding: { x: 16, y: 9 },
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(100000).setVisible(false);
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100000).setVisible(false)
+      .setInteractive({ useHandCursor: true })
+      .on("pointerdown", (
+        _pointer: Phaser.Input.Pointer,
+        _localX: number,
+        _localY: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        event.stopPropagation();
+        if (this.nearestInteractable) {
+          this.openVocabPanel(this.nearestInteractable.concept);
+        }
+      });
 
     this.dialogue = this.add.dom(640, 590).createFromHTML(`
       <section class="dialogue-panel" aria-label="Lina ile konuşma">
@@ -380,8 +398,15 @@ export class LibraryScene extends Phaser.Scene {
           <div><strong>LINA</strong><span>LIBRARIAN · AI</span></div>
           <button class="dialogue-close" type="button" aria-label="Konuşmayı kapat">ESC · close</button>
         </header>
-        <div class="dialogue-messages" aria-live="polite">
-          <p class="dialogue-system">Ask Lina for a book in English.</p>
+        <div class="dialogue-scrollable">
+          <div class="dialogue-messages" aria-live="polite">
+            <p class="dialogue-system">Ask Lina for a book in English.</p>
+          </div>
+          <div class="dialogue-scroll-controls" aria-label="Konuşma geçmişini kaydır">
+            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Yukarı kaydır"></button>
+            <span class="dialogue-scroll-track" aria-hidden="true"></span>
+            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Aşağı kaydır"></button>
+          </div>
         </div>
         <div class="dialogue-status">Not connected</div>
         <form class="dialogue-form">
@@ -400,22 +425,35 @@ export class LibraryScene extends Phaser.Scene {
     this.dialogueStatus = node.querySelector(".dialogue-status") as HTMLElement;
     this.dialogueSubmit = node.querySelector("button[type='submit']") as HTMLButtonElement;
     this.dialogueMic = node.querySelector(".dialogue-mic") as HTMLButtonElement;
+    this.restoreDialogueMessages();
+    attachDialogueScrollControls(node, this.dialogueMessages);
     this.dialogueMic.addEventListener("click", () => void this.toggleRecording());
     node.querySelector(".dialogue-close")?.addEventListener("click", () => this.closeDialogue());
     node.addEventListener("pointerdown", (event) => event.stopPropagation());
     this.dialogueForm.addEventListener("submit", (event) => {
       event.preventDefault();
+      if (this.isRecording) {
+        this.stopRecording();
+        return;
+      }
       void this.submitDialogueTurn();
     });
 
     this.vocabPanel = this.add.dom(640, 590).createFromHTML(`
       <section class="dialogue-panel vocab-panel" aria-label="Bir eşyayı isimlendir">
         <header class="dialogue-header">
-          <div><strong>NAME IT</strong><span>VOCABULARY</span></div>
+          <div><strong>WHAT’S THIS IN ENGLISH?</strong><span>VOCABULARY PRACTICE</span></div>
           <button class="dialogue-close" type="button" aria-label="Kapat">ESC · close</button>
         </header>
-        <div class="dialogue-messages" aria-live="polite">
-          <p class="dialogue-system">What is this called in English?</p>
+        <div class="dialogue-scrollable">
+          <div class="dialogue-messages" aria-live="polite">
+            <p class="dialogue-system">What is this called in English?</p>
+          </div>
+          <div class="dialogue-scroll-controls" aria-label="Kelime geçmişini kaydır">
+            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Yukarı kaydır"></button>
+            <span class="dialogue-scroll-track" aria-hidden="true"></span>
+            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Aşağı kaydır"></button>
+          </div>
         </div>
         <div class="dialogue-status">Type the word and press Enter</div>
         <form class="dialogue-form">
@@ -432,6 +470,7 @@ export class LibraryScene extends Phaser.Scene {
     this.vocabMessages = vocabNode.querySelector(".dialogue-messages") as HTMLElement;
     this.vocabStatus = vocabNode.querySelector(".dialogue-status") as HTMLElement;
     this.vocabSubmit = vocabNode.querySelector("button[type='submit']") as HTMLButtonElement;
+    attachDialogueScrollControls(vocabNode, this.vocabMessages);
     vocabNode.querySelector(".dialogue-close")?.addEventListener("click", () => this.closeVocabPanel());
     vocabNode.addEventListener("pointerdown", (event) => event.stopPropagation());
     this.vocabForm.addEventListener("submit", (event) => {
@@ -510,8 +549,9 @@ export class LibraryScene extends Phaser.Scene {
       recorder.start();
       this.isRecording = true;
       this.dialogueMic.textContent = "⏹";
+      this.dialogueMic.setAttribute("aria-label", "Stop and send the spoken message");
       this.dialogueMic.classList.add("recording");
-      this.dialogueStatus.textContent = "Recording… click the mic again when you're done.";
+      this.dialogueStatus.textContent = "Recording… press stop or Send when you're done.";
     } catch {
       this.dialogueStatus.textContent = "Microphone access was denied.";
     }
@@ -521,6 +561,7 @@ export class LibraryScene extends Phaser.Scene {
     this.mediaRecorder?.stop();
     this.isRecording = false;
     this.dialogueMic.textContent = "🎤";
+    this.dialogueMic.setAttribute("aria-label", "Record a spoken message");
     this.dialogueMic.classList.remove("recording");
   }
 
@@ -559,9 +600,10 @@ export class LibraryScene extends Phaser.Scene {
    * kapali...) sessizce yutulur, cunku metin zaten dialogue panelinde
    * gorunur durumda.
    */
-  private async speakNpcResponse(text: string): Promise<void> {
+  private async speakNpcResponse(text: string, isCoach: boolean): Promise<void> {
     try {
-      const audioBlob = await this.api.synthesizeSpeech(text);
+      const profile = isCoach ? ROLEPLAY_TTS_PROFILES.coach : ROLEPLAY_TTS_PROFILES.librarian;
+      const audioBlob = await this.api.synthesizeSpeech(text, profile);
       const url = URL.createObjectURL(audioBlob);
       if (this.currentNpcAudio) {
         this.currentNpcAudio.pause();
@@ -618,10 +660,19 @@ export class LibraryScene extends Phaser.Scene {
         "reward",
       );
     }
-    void this.speakNpcResponse(result.npc_response);
+    void this.speakNpcResponse(result.npc_response, isCoach);
   }
 
-  private appendMessage(author: string, text: string, kind: string): void {
+  private restoreDialogueMessages(): void {
+    const remembered = getRememberedDialogue("library");
+    if (remembered.length === 0) return;
+    this.dialogueMessages.innerHTML = "";
+    remembered.forEach((message) => {
+      this.appendMessage(message.author, message.text, message.kind, false);
+    });
+  }
+
+  private appendMessage(author: string, text: string, kind: string, remember = true): void {
     this.dialogueMessages.querySelector(".dialogue-system")?.remove();
     const message = document.createElement("div");
     message.className = `dialogue-message ${kind}`;
@@ -632,6 +683,7 @@ export class LibraryScene extends Phaser.Scene {
     message.append(label, copy);
     this.dialogueMessages.append(message);
     this.dialogueMessages.scrollTop = this.dialogueMessages.scrollHeight;
+    if (remember) rememberDialogueMessage("library", { author, text, kind });
   }
 
   private setDialogueBusy(busy: boolean): void {

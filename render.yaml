@@ -1,0 +1,79 @@
+# Render Blueprint - "api" ve "ai" servislerini TEK dosyadan, tekrarlanabilir
+# sekilde tanimlar (bkz. https://render.com/docs/blueprint-spec).
+#
+# Bu dosya SADECE Render'daki production deploy'u tanimlar - yerel
+# docker-compose.yml'e (Sumeyra'nin terminalden kullandigi local gelistirme
+# akisina) hicbir sekilde dokunmuyor, o dosya ve ai/Dockerfile'in yerel
+# kullanimi aynen kaliyor.
+#
+# Kullanim:
+#   1) Render Dashboard > New > Blueprint > bu repo'yu secin.
+#   2) Render iki servisi (praglish-api, praglish-ai) otomatik olusturur;
+#      "sync: false" olan degiskenler icin deger girmenizi ister.
+#   3) praglish-ai servisi ilk kez deploy olup canliya gectiginde,
+#      Render'in ona verdigi gercek adresi (Settings sayfasinin ustunde
+#      yazar, orn. "https://praglish-ai-xxxx.onrender.com") kopyalayip
+#      praglish-api servisinin AI_SERVICE_URL degiskenine yapistirin ve
+#      USE_MOCK_AI'yi "false" yapip yeniden deploy edin.
+#   Bu adima kadar (veya ai servisini hic deploy etmeden hizli bir demo
+#   icin) USE_MOCK_AI=true birakabilirsiniz - o zaman api, ai servisine
+#   hic gitmeden sabit ama CALISAN bir cevap doner (bakery/library
+#   lokasyonlari icin tanimli, bkz. api/services/ai_client.py).
+services:
+  - type: web
+    name: praglish-api
+    runtime: docker
+    dockerfilePath: api/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: DATABASE_URL
+        sync: false # mevcut Postgres baglanti string'iniz
+      - key: USE_MOCK_AI
+        value: "true" # praglish-ai servisini deploy edip AI_SERVICE_URL'i girdikten sonra "false" yapin
+      - key: AI_SERVICE_URL
+        sync: false # praglish-ai servisinin gercek https://...onrender.com adresi (asagiya bakin)
+      - key: CORS_ORIGINS
+        value: "https://praglish.vercel.app" # gercek Vercel production domaininiz farkliysa guncelleyin
+
+  - type: web
+    name: praglish-ai
+    runtime: docker
+    dockerfilePath: ai/Dockerfile
+    dockerContext: .
+    plan: free
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_TTS_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: "gemini-3.5-flash-lite"
+      - key: GEMINI_EVALUATOR_MODEL
+        value: ""
+      - key: CORRECTION_MODEL
+        value: "gemini-3.5-flash-lite"
+      - key: STT_MODEL
+        value: "gemini-3.5-transcribe"
+      - key: TTS_MODEL
+        value: "gemini-3.1-flash-tts-preview"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: "llama-3.3-70b-versatile"
+      - key: GROQ_EVALUATOR_MODEL
+        value: "llama-3.1-8b-instant"
+      - key: GROQ_CORRECTION_MODEL
+        value: "llama-3.1-8b-instant"
+      - key: GROQ_STT_MODEL
+        value: "whisper-large-v3-turbo"
+      - key: GROQ_TTS_MODEL
+        value: "canopylabs/orpheus-v1-english"
+      - key: LANGUAGE_ACCEPTANCE_THRESHOLD
+        value: "50"
+      - key: STT_MAX_AUDIO_BYTES
+        value: "10485760"

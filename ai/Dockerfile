@@ -10,4 +10,9 @@ COPY shared/ ./shared
 
 EXPOSE 8001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+# api/Dockerfile'daki ile ayni sebep: Render (veya baska bir PaaS) kendi
+# PORT degiskenini enjekte eder ve container'in ONA bagli olmasini bekler.
+# ${PORT:-8001} sayesinde yerel docker-compose'da (PORT tanimli degil)
+# davranis DEGISMEZ - hala 8001'de dinler; sadece deploy ortaminda PORT
+# neyse ona uyum saglar.
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port \"${PORT:-8001}\" --reload"]

@@ -837,7 +837,7 @@
     // calistigi 8000 portuyla otomatik kullaniyoruz - localhost'ta hicbir
     // sey degismiyor, sadece LAN erisiminde devreye giriyor.
     if (location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
-      window.PRAGLISH_API_BASE_URL = `http://${location.hostname}:8000`;
+      window.PRAGLISH_API_BASE_URL = "https://praglish-api.onrender.com";
     }
   </script>
   <script type="module" src="/src/main.ts"></script>

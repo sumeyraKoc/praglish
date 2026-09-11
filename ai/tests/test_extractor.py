@@ -2,7 +2,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from ai.modules.extractor import (
+from modules.extractor import (
     CORRECT_PROMPT_PATH,
     INCORRECT_PROMPT_PATH,
     CorrectExtractor,

@@ -1,65 +1,29 @@
+"""
+Bu dosya aslinda api/services/dialogue_history.py'yi (api servisine ait bir
+modul) test ediyordu ama yanlislikla ai/tests/ altina konmustu. ai container'i
+Docker imajinda yalnizca ai/ (ve shared/) kodu bulunuyor - api/ kodu hic yok -
+bu yuzden `docker compose exec ai python -m unittest discover -s tests`
+calistirildiginda bu dosya `ModuleNotFoundError: No module named 'api'` ile
+patliyordu ve butun ai test suite'ini FAILED yapiyordu.
+
+Ayni testler artik dogru yerde: api/tests/test_dialogue_history.py (orada
+api container'i icinde sorunsuz calisiyor, cunku `services.dialogue_history`
+oradan direkt import edilebiliyor). Bu dosyayi tamamen silmek yerine (bu
+oturumda dosya silme yetkim yok) kesfi (discovery) kirmayan zararsiz bir
+skip'e cevirdim - yeni bir seye ihtiyaciniz yoksa bu dosyayi elle silip
+gecebilirsiniz.
+"""
+
 import unittest
-from types import SimpleNamespace
-
-from api.services.dialogue_history import build_evaluator_history
 
 
-def dialogue(speaker: str, text: str, is_natural: bool | None = None):
-    return SimpleNamespace(
-        speaker=speaker,
-        text=text,
-        is_natural=is_natural,
-    )
-
-
-class DialogueHistoryTests(unittest.TestCase):
-    def test_keeps_all_npc_and_only_accepted_user_messages(self):
-        history = build_evaluator_history(
-            [
-                dialogue("npc", "Welcome."),
-                dialogue("user", "A correct request.", True),
-                dialogue("npc", "What size?"),
-                dialogue("user", "An incorrect request.", False),
-                dialogue("coach", "Please try again."),
-                dialogue("npc", "Anything else?"),
-            ]
+class DialogueHistoryTestsMoved(unittest.TestCase):
+    def test_see_api_tests_test_dialogue_history(self) -> None:
+        raise unittest.SkipTest(
+            "Tasindi: bkz. api/tests/test_dialogue_history.py - bu modul "
+            "api/services/dialogue_history.py'yi test ediyor, ai container'inda "
+            "api/ kodu bulunmadigi icin buradan calisamaz."
         )
-
-        self.assertEqual(
-            [(item.speaker, item.text) for item in history],
-            [
-                ("npc", "Welcome."),
-                ("user", "A correct request."),
-                ("npc", "What size?"),
-                ("npc", "Anything else?"),
-            ],
-        )
-
-    def test_filters_legacy_coach_saved_as_npc_after_rejected_user(self):
-        history = build_evaluator_history(
-            [
-                dialogue("user", "An incorrect request.", False),
-                dialogue("npc", "Please try again."),
-            ]
-        )
-
-        self.assertEqual(history, [])
-
-    def test_keeps_the_full_eligible_history_without_a_turn_limit(self):
-        dialogues = []
-        for index in range(10):
-            dialogues.extend(
-                [
-                    dialogue("user", f"Accepted message {index}.", True),
-                    dialogue("npc", f"NPC response {index}."),
-                ]
-            )
-
-        history = build_evaluator_history(dialogues)
-
-        self.assertEqual(len(history), 20)
-        self.assertEqual(history[0].text, "Accepted message 0.")
-        self.assertEqual(history[-1].text, "NPC response 9.")
 
 
 if __name__ == "__main__":

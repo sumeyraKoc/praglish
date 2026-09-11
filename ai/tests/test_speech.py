@@ -2,7 +2,7 @@ import base64
 import unittest
 from types import SimpleNamespace
 
-from ai.modules.speech import (
+from modules.speech import (
     GeminiSpeechToTextProvider,
     GeminiTextToSpeechProvider,
 )

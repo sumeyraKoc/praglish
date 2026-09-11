@@ -1,9 +1,9 @@
 import unittest
 
-from ai.modules.correction import CorrectionModule
-from ai.modules.language_evaluator import LanguageEvaluator
-from ai.modules.npc import NpcModule
-from ai.modules.speech import TextSpeechModule
+from modules.correction import CorrectionModule
+from modules.language_evaluator import LanguageEvaluator
+from modules.npc import NpcModule
+from modules.speech import TextSpeechModule
 from shared.schemas import (
     CorrectionInput,
     CorrectionResult,

@@ -1,19 +1,8 @@
-/**
- * Izometrik projeksiyon matematigi.
- *
- * Grid koordinatlari (gridX, gridY, gridZ - oda icindeki tam sayi tile pozisyonlari)
- * ile ekran koordinatlari (screenX, screenY - Phaser'in cizdigi piksel pozisyonlari)
- * arasinda donusum yapar.
- *
- * Bu dosya bilerek Phaser'a bagimli DEGIL - boylece tarayici/canvas olmadan,
- * saf Node.js ile test edilebilir. Habbo/baska hicbir motorun koduna bagimli
- * degil, standart izometrik projeksiyon formulu kullanir.
- */
 
 export interface GridPosition {
   x: number;
   y: number;
-  z: number; // kat/yukseklik (coğu oda icin 0)
+  z: number; // floor/elevation (0 for most rooms)
 }
 
 export interface ScreenPosition {
@@ -35,7 +24,6 @@ export const DEFAULT_ISO_CONFIG: IsoConfig = {
   originY: 0,
 };
 
-/** Grid pozisyonunu ekran pozisyonuna cevirir (standart 2:1 izometrik projeksiyon). */
 export function gridToScreen(grid: GridPosition, config: IsoConfig = DEFAULT_ISO_CONFIG): ScreenPosition {
   const halfW = config.tileWidth / 2;
   const halfH = config.tileHeight / 2;
@@ -45,7 +33,6 @@ export function gridToScreen(grid: GridPosition, config: IsoConfig = DEFAULT_ISO
   };
 }
 
-/** Ekran pozisyonunu (z=0 varsayarak) grid pozisyonuna geri cevirir - tiklanan yeri bulmak icin. */
 export function screenToGrid(
   screen: ScreenPosition,
   config: IsoConfig = DEFAULT_ISO_CONFIG,

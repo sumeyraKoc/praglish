@@ -1,19 +1,14 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Praglish - Oda Prototipi</title>
+  <title>Praglish - Interactive English Practice</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0f0c17; }
     body { display: grid; place-items: center; }
     #game { width: 100%; height: 100%; }
     canvas { image-rendering: pixelated; }
-    /* Listen & Repeat'in sahne/karakter secim ekraninda masa gorseli
-       yalnizca 1280x720 Phaser canvas'ina degil, tarayicinin gorunur
-       alaninin tamamına yayilir. FIT modunun diger sahnelerde biraktigi
-       bosluklar bu ekranda ayni gorselle dolar; diger sahneler bu body
-       sinifini kullanmadigi icin mevcut olcekleme davranislari degismez. */
     body.dub-levels-backdrop {
       background-color: #171020;
       background-image: url("/assets/dub/ui/script-select-bg.jpg");
@@ -28,9 +23,6 @@
       background-position: center;
       background-repeat: no-repeat;
     }
-    /* Studio gorseli merkezdeki monitor/konsol kartinda net kalir. Canvas
-       disina tasan kopya ise atmosferik bir uzanti gibi koyulastirilip
-       yumusatilir; boylece ayni konsolun iki kez cizildigi hissi azalir. */
     body.dub-studio-backdrop::before {
       content: "";
       position: fixed;
@@ -159,28 +151,14 @@
       font-size: 16px;
     }
     .dialogue-form button.dialogue-mic.recording { background: #e0555f; color: #fff; }
-    /* Vocabulary ("name it") paneli, NPC diyalog panelinden (sari) ayrisin diye yesil vurgu kullanir. */
     .vocab-panel { border-color: #8fd3a5; }
     .vocab-panel .dialogue-header strong { color: #8fd3a5; }
     .vocab-panel .dialogue-form input:focus { border-color: #8fd3a5; }
     .vocab-panel .dialogue-form button { background: #8fd3a5; }
     .dialogue-message.already span { color: #9d8fd1; }
 
-    /* "Sahneyi Seslendir" (DubScene) paneli - .dialogue-panel'i temel alir,
-       oda/lobi/sahne-sonu icerigi daha uzun oldugu icin biraz daha uzun ve
-       ic govdesi kaydirilabilir. */
-    /* Video eklenince (bkz. .dub-video asagida) panel daha uzun tutuluyor ki
-       video kartin bos alanini doldursun (kucuk bir video birakip altinda
-       bos yer/scroll birakmak yerine) - dub-panel--levels zaten kendi
-       height'ini ezip veriyor, bu degisiklik onu etkilemiyor. */
     .dub-panel { height: 640px; border-color: #78dce8; }
     .dub-panel .dialogue-header strong { color: #78dce8; }
-    /* Karakterin agiz hareketlerini gostermek icin SESSIZ video (bkz.
-       DubScene.ts setupVideoElement/playVideoRange) - video_url'i olmayan
-       script'lerde JS tarafindan display:none yapilip gizlenir. Sabit
-       (max- degil) yukseklik kullaniliyor ki panel buyudukce video da
-       kartin gercek bos alanini kullansin, altinda bosluk/gereksiz scroll
-       kalmasin. */
     .dub-video {
       display: block;
       width: 100%;
@@ -231,22 +209,6 @@
     }
     .dub-char-btn:hover { border-color: #78dce8; }
 
-    /* DubScene - Ekran 1: script secimi. "Ahsap masa" arka plani (bkz.
-       game/public/assets/dub/ui/script-select-bg.jpg) uzerinde, her script
-       icin bir "not kagidi yigini" karti (bkz. DubScene.ts NOTE_IMAGES) -
-       kartin ustunde script basligi ve o script'in GERCEK karakter
-       isimlerini tasiyan renkli dugmeler var (Player 1/2 degil - bkz.
-       DubScene.ts renderLevelItemHtml). Kartin altinda, oyuncunun o
-       script'te en son sectigi karaktere ait replik sayisi kadar
-       user-ikonu var; tamamlanan repliklerin ikonu yesile doner, en altta
-       o karakterin ortalama dogruluk yuzdesi yazar. Ilerleme hesabi
-       TARAYICIDA (localStorage) tutulur - bkz. DubScene.ts. */
-    /* Seviye haritasi paneli DIKEY OLARAK ESNEK (flex column) - govde
-       (.dub-levels-body) kalan tum alani doldurur ve icindekini ORTALAR.
-       ONEMLI: bu, video ekranlarindaki .dub-body'nin max-height/overflow
-       kisitlamasindan (asagida) AYRI bir sinif (.dub-levels-body) - ikisi
-       karistirilmasin, aksi halde seviye haritasi 220px'de kesilip
-       gereksiz bir ic scroll gosterir (daha once yasanan hata buydu). */
     .dub-panel--levels {
       width: 940px;
       height: 660px;
@@ -256,13 +218,6 @@
       background: transparent;
       box-shadow: none;
     }
-    /* Bu ekranin basligi klasik .dialogue-header (kalin yazi + "x") degil -
-       referans "SELECT A SCRIPT"/"BACK" ahsap afisleri gibi UC AYRI eleman:
-       sol = ahsap "Back" dugmesi (data-action="exit" - mount() bunu genel
-       olarak dinliyor), orta = dekoratif ahsap "Listen & Repeat" afisi, sag
-       = uzerine gelince/dokununca aciklama balonu acan "?" ikonu. Ahsap
-       gorunum gercek bir gorsele degil, katmanli gradient/border/golgeye
-       dayaniyor (.dub-wood-btn / .dub-wood-banner ortak temel). */
     .dub-levels-header {
       position: relative;
       display: flex;
@@ -271,12 +226,6 @@
       min-height: 56px;
       padding: 14px 20px 6px;
     }
-    /* NOT: burada BILEREK text-transform:uppercase YOK - sayfa lang="tr"
-       oldugu icin CSS uppercase, "i" harfini Turkce kuralina gore noktali
-       "İ"ye cevirip karakter isimlerini (Reggie, King Little, ...) bozuyordu.
-       Buyuk harf donusumu artik DubScene.ts bannerText() ile JS tarafinda
-       (locale-duyarsiz toUpperCase) yapiliyor - buraya gelen metin zaten
-       BUYUK HARF. */
     .dub-wood-btn,
     .dub-wood-banner {
       box-sizing: border-box;
@@ -312,10 +261,6 @@
       align-items: center;
       justify-content: center;
     }
-    /* "?" yardim ikonunun HEMEN SOLUNDA, ayni sekilde konumlanan ikinci bir
-       daire dugme - Ilerleme Defteri'ni acar (bkz. DubScene.ts
-       renderJournal). .dub-help gibi kendi konteynerine sarilmadan
-       dogrudan absolute konumlandi (basit tek-dugme, acilir balonu yok). */
     .dub-journal-icon { position: absolute; right: 56px; top: 50%; transform: translateY(-50%); font-size: 16px; }
     .dub-help-tooltip {
       position: absolute;
@@ -366,18 +311,6 @@
       padding: 12px 20px 20px;
       width: 100%;
     }
-    /* Her script bir "not kagidi" karti - not1-4.png zaten kagit/golge
-       cizimini iceriyor, bu yuzden kartin kendi arka plan/border'i yok.
-       Gorselin GERCEK "kagit" alani, kartin tum kutusundan kucuk (kenarlarda
-       arkadaki yigin sayfalarinin egik koseleri tasiyor) - bu yuzden ic
-       bosluk (padding) buyukce tutuluyor ki metin/dugmeler her zaman on
-       sayfanin duz, okunakli bolgesinde kalsin, kagidin kenarlarina
-       tasmasin. background-size 100% 100% kullanmiyoruz - gorselin en/boy
-       orani bozulmasin diye contain + no-repeat.
-       filter: iki ayri drop-shadow ust uste - biri kagidin desk'e deydigi
-       yerde SIKI/koyu bir "temas golgesi", digeri daha genis/yumusak bir
-       "havada duruyor" golgesi; boylece not, arka plana duz yapistirilmis
-       gibi degil, masanin UZERINDE duruyormus gibi gorunur. */
     .dub-note-card {
       position: relative;
       box-sizing: border-box;
@@ -386,25 +319,15 @@
       background-size: 100% 100%;
       background-position: center;
       transform-origin: center;
-      /* 1) kagidin hemen altindaki keskin temas golgesi,
-         2) masaya dusen orta yumusak golge,
-         3) cok hafif/genis ortam golgesi. PNG'nin alfa sinirini izleyen
-         drop-shadow kullanildigi icin dikdortgen bir kutu gibi gorunmez. */
       filter:
         drop-shadow(0 2px 1px rgba(28, 12, 3, 0.82))
         drop-shadow(0 7px 6px rgba(28, 12, 3, 0.5))
         drop-shadow(0 18px 16px rgba(28, 12, 3, 0.28));
     }
-    /* Gercek bir masaya elle birakilmis gibi her kagidin acisi ve dikey
-       oturusu cok az farkli. Degerler bilerek 1 derecenin altinda: metnin
-       okunabilirligini bozmadan kusursuz grid hissini kiriyor. */
     .dub-note-card[data-note-variant="1"] { transform: translateY(2px) rotate(-0.65deg); }
     .dub-note-card[data-note-variant="2"] { transform: translateY(-1px) rotate(0.55deg); }
     .dub-note-card[data-note-variant="3"] { transform: translateY(1px) rotate(0.45deg); }
     .dub-note-card[data-note-variant="4"] { transform: translateY(-2px) rotate(-0.5deg); }
-    /* Her PNG'nin on sayfasindaki bos/yazilabilir alan farkli. Baslik ve
-       karakterler tum kartin merkezine degil bu alana oturur; boylece
-       buyutec, ag ve roket cizimlerinin ustune binmez. */
     .dub-note-content {
       position: absolute;
       left: 15%;
@@ -419,14 +342,6 @@
     .dub-note-card[data-note-variant="2"] .dub-note-content { left: 8%; top: 29%; width: 57%; }
     .dub-note-card[data-note-variant="3"] .dub-note-content { left: 16%; top: 30%; width: 70%; }
     .dub-note-card[data-note-variant="4"] .dub-note-content { left: 13%; top: 31%; width: 70%; }
-    /* Baslik SADECE film/dizi adi (bkz. api/routes/dub.py title alanlari -
-       artik "- sahne aciklamasi" eki yok), bu yuzden kisa ve tek/iki satirda
-       kaliyor. Stil, kullanicinin referans aldigi afisteki gibi kalin,
-       BUYUK HARF, duz siyah/kahve bir "poster basligi" - hafif bir vurgu
-       (emboss) disinda golge/efekt yok. BUYUK HARF donusumu BURADA CSS ile
-       DEGIL, DubScene.ts icinde JS .toUpperCase() ile yapiliyor - sayfa
-       lang="tr" oldugu icin CSS text-transform:uppercase "i" harfini
-       noktali "İ" yapip basliklari bozuyordu (bkz. renderLevelItemHtml). */
     .dub-note-title {
       width: 100%;
       font: 900 20px "Courier New", Courier, monospace;
@@ -454,26 +369,6 @@
     }
     .dub-char-pill:hover { transform: translateY(-2px); }
 
-    /* DubScene - Ekran 2a/2b ("sira sende" / "sira baskasinda"): kullanicinin
-       verdigi eski TV + kontrol konsolu gorseli (bkz.
-       game/public/assets/dub/ui/studio-bg.jpg) uzerine kurulu. Video, TV'nin
-       SIYAH EKRANININ icine; "tekrar dinle / kaydet / devam et" ikonlari
-       ekranin ALTINDAKI uc konsol dugmesinin (turuncu/yesil/gri) TAM
-       UZERINE mutlak konumlandirilir. Butun yuzdeler orijinal
-       2528x1686 gorsel uzerinde olculdu (bkz. proje notlari) -
-       .dub-studio-stage'in aspect-ratio'su gorselle AYNI tutuldugu icin
-       (asagida) bu yuzdeler panel hangi genislikte render edilirse edilsin
-       DOGRU hizalanmaya devam eder. */
-    /* NOT: ayri bir "header" satiri (BACK dugmesi + ahsap tabela + replik
-       sayaci) KALDIRILDI - o satir dikey yer kaplayip ekrani (video/monitor
-       gorseli) kucultuyordu. BACK artik konsolun sol ustundeki cizili
-       dugmelerden birinin (yesil, ilk dugme) UZERINE metin olarak
-       yerlestiriliyor (bkz. .dub-console-btn--back), replik sayaci ise
-       monitorun DISINA, corner'a yapistirilmis kucuk bir kagit etiket
-       gorunumunde (bkz. .dub-studio-tag). Karakter/sira bilgisi artik tek
-       satirlik durum metninin (.dub-studio-status) icine gomulu - ayrica
-       panel genisligi 800->860px yapilarak bosalan dikey alan ekrani
-       buyutmek icin kullanildi (bkz. DubScene.ts renderYourTurn/renderOtherTurn). */
     .dub-panel--studio {
       width: 1000px;
       height: auto;
@@ -508,9 +403,6 @@
       object-fit: cover;
       background: #000;
     }
-    /* Konsol ikonlari: cizilmis dugmenin UZERINDE, TAM OTURACAK sekilde
-       konumlandirilir - kendi arka plani YOK (dugmenin kendi rengi/dokusu
-       zaten gorselde var), sadece ikon ustte durur. */
     .dub-console-btn {
       position: absolute;
       top: 92.82%;
@@ -524,16 +416,12 @@
       transition: transform 0.12s ease, filter 0.12s ease;
     }
     .dub-console-btn svg { width: 55%; height: 55%; fill: #fff8ec; filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7)); }
-    /* Mikrofon simgesi */
     .dub-console-btn--continue svg {
       transform: rotate(-15deg);
     }
     .dub-console-btn:hover:not(:disabled) { transform: scale(1.08); }
     .dub-console-btn:active:not(:disabled) { transform: scale(0.92); }
     .dub-console-btn:disabled { cursor: default; filter: grayscale(0.75) brightness(0.55); }
-    /* Gorseldeki renkli tuslar perspektifli ve ayni genislikte degil.
-       Bu yuzden ikonlar tek bir ortak ofset yerine, yakin plan uzerinden
-       olculen kendi optik merkezlerine ayri ayri oturtulur. */
     .dub-console-btn--replay { left: 58.32%; top: 91.95%; width: 9.89%; height: 5.34%; }
     .dub-console-btn--record { left: 70.1%; top: 91.97%; width: 8.7%; height: 5.34%; }
     .dub-console-btn--record.recording svg { fill: #ffb3b3; }
@@ -544,9 +432,6 @@
       0%, 100% { filter: drop-shadow(0 0 0 rgba(255, 90, 90, 0)); }
       50% { filter: drop-shadow(0 0 10px rgba(255, 90, 90, 0.85)); }
     }
-    /* BACK: konsolun sol ustundeki ilk (yesil) cizili dugmenin TAM UZERINE
-       oturan metin - SVG ikon degil, dugmenin uzerine "kazinmis" gibi
-       koyu/kontrastli bir yazi (bkz. yukaridaki NOT). */
     .dub-console-btn--back {
       left: 8.61%;
       top: 91.67%;
@@ -557,10 +442,6 @@
       letter-spacing: 0.5px;
       text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
     }
-    /* Replik sayaci: monitorun DISINA (ahsap cerceve kosesine) yapisik
-       kucuk, hafif donuk bir kagit etiket - "yirtik not kagidi" hissi icin
-       duzensiz koseler + hafif golge. Konumu %'lik oldugu icin panel
-       genisligi degisse bile monitorun kosesinde kalir. */
     .dub-studio-tag {
       position: absolute;
       top: 1.5%;
@@ -576,15 +457,6 @@
       letter-spacing: 0.3px;
       z-index: 2;
     }
-    /* Puanlama sonrasi kelime/yuzde artik panelin ALTINDA degil, ekranin
-       (video alaninin) KENDI ICINDE, tipki bir "altyazi" gibi TV ekraninin
-       alt kismina bindirilmis, dusuk opakli siyah bir serit uzerinde
-       gosteriliyor - boylece kirmizi/yesil kelimeler daha net secilip
-       kullanici neyi yanlis soyledigini video hala ekrandayken gorebiliyor.
-       Konum/genislik video ile AYNI (left/width - bkz. .dub-studio-video),
-       "bottom" ise video'nun stage icindeki alt kenariyla hizali (100% -
-       72.66% = 27.34%), altyazinin ekranin en dibine yapismamasi icin
-       ustune biraz pay eklendi. */
     .dub-studio-feedback {
       position: absolute;
       left: 11.91%;
@@ -609,8 +481,6 @@
     .dub-summary-line strong { color: #78dce8; }
     .dialogue-status.dub-status-error { color: #ff8e8e; }
 
-    /* Pixel-paper ilhamli ilerleme defteri. Phaser DOM container'iyle birlikte
-       canvas olceginde hareket eder; normal odalarda DOM'a hic eklenmez. */
     .progress-dashboard {
       box-sizing: border-box;
       width: 1120px;
@@ -677,16 +547,6 @@
     .idiom-card div { display: grid; gap: 4px; }
     .idiom-card small { color: #655e50; }
 
-    /* DubScene - "Ilerleme Defteri" (renderJournal): Sumeyra'nin genel
-       DashboardScene'inin (bkz. DashboardScene.ts renderShell / .progress-
-       dashboard yukarida) AYNI kabugu (ayni boyut, ayni baslik/alt baslik,
-       ayni "CLOSE" dugmesi) burada BIREBIR tekrar kullanilir - degisen tek
-       sey .paper-book icindeki icerik. Sekme (.paper-tabs) yok, bu yuzden
-       .paper-book'u basligin hemen altina degil, sekmelerin normalde
-       birakacagi bosluk kadar asagi aliyoruz (margin-top). .paper-scroll
-       varsayilan olarak scroll-bar gosterir (bkz. yukaridaki taban kural) -
-       burada KASITLI OLARAK kapatildi (overflow: hidden) ve satir araliklari
-       sikilastirildi, boylece defter scroll-bar olmadan tek bakista okunur. */
     .dub-journal-dashboard .paper-book { margin-top: 34px; }
     .dub-journal-dashboard .paper-scroll { overflow: hidden; }
     .dub-journal-dashboard .paper-meter { margin: 8px 0; }
@@ -694,12 +554,6 @@
     .dub-journal-dashboard .journal-script:last-child { margin-bottom: 0; }
     .dub-journal-dashboard .journal-script > b { display: block; font-size: 13px; letter-spacing: 0.3px; margin-bottom: 4px; color: #4a3418; }
 
-    /* MenuScene - ana mod secim ekrani: kapali halde dikey "sirt" (spine)
-       kartlar yan yana hafif bindirilmis durur (kitap sirtlari gibi), uzerine
-       gelince hafifce kalkar/egilir, tiklaninca yatayda genisleyip tam
-       gorseli + aciklamayi + "Oyna" butonunu gosterir; digerleri kucularak
-       kenara cekilir. Login/signup akisi henuz olmadigi icin oyun su an
-       dogrudan bu menuden basliyor. */
     .menu-root {
       box-sizing: border-box;
       width: 1080px;
@@ -829,13 +683,6 @@
 <body>
   <div id="game"></div>
   <script>
-    // Oyun "localhost:5173" DISINDA bir adresten aciliyorsa (orn. ayni
-    // WiFi/LAN'daki baska bir cihazdan senin bilgisayarinin IP'siyle
-    // "http://192.168.x.x:5173" seklinde acilmasi), PraglishApiClient.ts ve
-    // DubApiClient.ts'deki varsayilan "http://localhost:8000" o cihaza
-    // isaret etmez ve calismaz. Bu yuzden ayni host'u (IP/domain), API'nin
-    // calistigi 8000 portuyla otomatik kullaniyoruz - localhost'ta hicbir
-    // sey degismiyor, sadece LAN erisiminde devreye giriyor.
     if (location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
       window.PRAGLISH_API_BASE_URL = "https://praglish-api.onrender.com";
     }

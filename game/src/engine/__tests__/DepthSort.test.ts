@@ -2,19 +2,19 @@ import { describe, expect, it } from "vitest";
 import { calculateDepth, sortByDepth } from "../DepthSort";
 
 describe("DepthSort", () => {
-  it("gridde 'onde' olan (x+y buyuk) entity daha yuksek depth alir", () => {
+  it("gives a higher depth to the entity farther forward on the grid", () => {
     const front = calculateDepth({ x: 5, y: 5, z: 0 });
     const back = calculateDepth({ x: 1, y: 1, z: 0 });
     expect(front).toBeGreaterThan(back);
   });
 
-  it("ayni tile'da (ayni x+y) daha yuksek z daha ustte cizilir", () => {
+  it("draws a higher z value above another entity on the same tile", () => {
     const higher = calculateDepth({ x: 2, y: 2, z: 1 });
     const lower = calculateDepth({ x: 2, y: 2, z: 0 });
     expect(higher).toBeGreaterThan(lower);
   });
 
-  it("sortByDepth listeyi artan depth sirasina gore dizer", () => {
+  it("sortByDepth orders the list by ascending depth", () => {
     const entities = [
       { id: "front", grid: { x: 5, y: 5, z: 0 } },
       { id: "back", grid: { x: 0, y: 0, z: 0 } },
@@ -24,7 +24,7 @@ describe("DepthSort", () => {
     expect(sorted).toEqual(["back", "middle", "front"]);
   });
 
-  it("sortByDepth orijinal diziyi degistirmez (yeni dizi doner)", () => {
+  it("sortByDepth returns a new array without mutating the original", () => {
     const entities = [
       { id: "a", grid: { x: 1, y: 1, z: 0 } },
       { id: "b", grid: { x: 0, y: 0, z: 0 } },

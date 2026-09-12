@@ -1,32 +1,6 @@
 import Phaser from "phaser";
 import { DubApiClient, DubApiError, DubScript, DubScriptLine, WordVerdict } from "../services/DubApiClient";
 
-/**
- * "Sahneyi Seslendir" (Dub the Scene) - TEK KISILIK Listen & Repeat modu.
- *
- * Bu sahne bilincli olarak RoomScene/LibraryScene'den BAGIMSIZ: kendi
- * DOM panelini kurar, normal oyun akisina (harita/NPC/kelime) hic
- * dokunmaz. Mimari kararlar icin bkz. api/routes/dub.py dosya basi
- * aciklamasi.
- *
- * NOT: bu ozellik ONCE cok oyunculu (oda kur/katil, WebSocket, ngrok ile
- * farkli aglardan katilim) olarak yapilmisti; proje kararlastirdi ki su an
- * icin TEK KISILIK ilerlesin - coklu oyuncu ileride ayrica eklenecek.
- * Akis simdi soyle:
- *   1) Oyuncu bir sahne (script) ve seslendirmek istedigi TEK bir karakter
- *      secer.
- *   2) Sahne bastan sona, repliklerin sirasina gore ilerler: secilmeyen
- *      karakterin repliklerinde orijinal ses (klip varsa klipten, yoksa
- *      TTS ile) oldugu gibi/tam ses seviyesinde calinir; secilen
- *      karakterin repliklerinde "dinle -> tekrar et -> kaydet -> puanla"
- *      akisi calisir.
- *   3) Sahne bitince oyuncu kendi repliklerinin puanlarini gorur ve
- *      isterse tum sahneyi bastan dinleyebilir - bu tekrar dinlemede
- *      sectigi karakterin repliklerinde ORIJINAL ses yerine oyuncunun
- *      KENDI KAYDI calinir (gercek "dublaj"; bkz. recordedAudio/
- *      playFullScene) - bir replik icin kayit yoksa DUCK_VOLUME'a kisilmis
- *      orijinal sese geri dusulur. Digerleri tam ses seviyesinde kalir.
- */
 
 type Screen = "start" | "your-turn" | "other-turn" | "finished" | "journal";
 
@@ -37,22 +11,10 @@ interface SummaryEntry {
 }
 
 const RECORDING_AUTO_STOP_MS = 12_000;
-// "Tum Sahneyi Dinle"de normalde oyuncunun KENDI KAYDI calinir (bkz.
-// recordedAudio/playFullScene, dosya basi aciklama madde 3) - bu sadece o
-// repligin kaydi hicbir sebeple mevcut degilse devreye giren YEDEK
-// davranistir: orijinal ses tamamen susturulmaz (0), boylece sahne
-// "kesintisiz" hissi vermeye devam ediyor ama oyuncu kendi repliginin
 // nerede oldugunu net duyuyor.
 const DUCK_VOLUME = 0.12;
 
 // ---------------------------------------------------------------------
-// Ekran 1 (script secimi) gorsel varliklari - "ahsap masa" arka plani ve
-// uzerine serpistirilmis "not kagidi" yigin gorselleri (bkz.
-// game/public/assets/dub/ui/). Her script bir not kagidina atanir; script
-// sayisi not gorseli sayisini (4) asarsa NOTE_IMAGES dongusel (modulo)
-// olarak tekrar kullanilir, boylece yeni bir script eklendiginde kod
-// degismeden calismaya devam eder. (Arka plan URL'i dogrudan CSS'te
-// tanimli - bkz. index.html .dub-panel--levels - burada ayrica
 // tutulmuyor.)
 const NOTE_IMAGES = [
   "/assets/dub/ui/note1.png",
@@ -60,10 +22,6 @@ const NOTE_IMAGES = [
   "/assets/dub/ui/note3.png",
   "/assets/dub/ui/note4.png",
 ] as const;
-// Mevcut 4 script icin not gorselinin kosesindeki cizime (bos / buyutec /
-// orumcek agi / roket) gore ELDE tema eslesmesi yapildi (orn. Superman ->
-// roketli not) - listede olmayan (gelecekte eklenecek) script'ler icin
-// index'e gore NOTE_IMAGES dongusune dusulur (bkz. noteAssetForScript).
 const SCRIPT_NOTE_INDEX: Record<string, number> = {
   "charade-44": 1, // buyutec - casusluk/gerilim sahnesi
   "superman-caverns": 3, // roket - bilim-kurgu/superkahraman
@@ -74,30 +32,14 @@ function noteAssetForScript(scriptId: string, index: number): { url: string; var
   const noteIndex = SCRIPT_NOTE_INDEX[scriptId] ?? index % NOTE_IMAGES.length;
   return { url: NOTE_IMAGES[noteIndex]!, variant: noteIndex + 1 };
 }
-// Karakter isim dugmelerine (referans gorseldeki renkli "player" pillerinin
-// yerini alan, GERCEK karakter adlarini tasiyan dugmeler) dongusel renk
-// atamak icin kucuk bir palet - hangi karakterin "onemli" oldugunu degil,
-// sadece gorsel cesitliligi ifade eder.
 const CHARACTER_PILL_COLORS = ["#6bbf6b", "#e0668f", "#e8a23c", "#8f7ae0", "#4fb8c9"] as const;
 function characterPillColor(index: number): string {
   return CHARACTER_PILL_COLORS[index % CHARACTER_PILL_COLORS.length]!;
 }
 
 // ---------------------------------------------------------------------
-// Ekran 2a/2b ("sira sende" / "sira baskasinda") icin "dublaj stüdyosu"
-// arka plani (bkz. game/public/assets/dub/ui/studio-bg.jpg - kullanicinin
-// verdigi eski bir TV/monitor + kontrol konsolu gorseli). Video, gorseldeki
-// SIYAH EKRANIN icine; "tekrar dinle / kaydet / devam et" ikonlari ise
-// ekranin ALTINDAKI uc konsol dugmesinin (turuncu/yesil/gri) TAM UZERINE
-// mutlak konumlandirilir - yuzdeler orijinal 2528x1686 gorsel uzerinde
-// olcum yapilip hesaplandi (bkz. proje notlari), panel'in kendi genisligi
-// degisse bile .dub-studio-stage'in aspect-ratio'su gorselle AYNI
-// tutuldugu icin (bkz. index.html) bu yuzdeler her zaman doğru hizalanir.
 const STUDIO_BG_URL = "/assets/dub/ui/studio-bg.jpg";
 
-// Basit, tek renkli (currentColor ile boyanan) SVG ikonlar - konsol
-// dugmelerinin turuncu/yesil/gri zeminiyle her zaman kontrast olusturmasi
-// icin CSS'te acik krem rengiyle doldurulur (bkz. .dub-console-btn svg).
 const ICON_REPLAY =
   '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.75 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35Z"/></svg>';
 const ICON_MIC =
@@ -105,16 +47,6 @@ const ICON_MIC =
 const ICON_STOP = '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 const ICON_CONTINUE = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7L8 5Z"/></svg>';
 
-/**
- * "Ahsap afis" (.dub-wood-banner/.dub-wood-btn - bkz. index.html) metni
- * artik CSS text-transform:uppercase KULLANMIYOR: sayfa `lang="tr"`
- * oldugu icin tarayici CSS'te "i" harfini Turkce kurallarina gore noktali
- * BUYUK I'ya ("İ") ceviriyordu (orn. "Gulliver's" -> "GULLİVER'S") - bu,
- * ozellikle karakter isimlerinde (Reggie, King Little, ...) rahatsiz edici
- * bir "bozukluk" gibi goruyordu. Duz JS toUpperCase() BU LOKAL-DUYARLI
- * kurali uygulamaz, bu yuzden dinamik banner metni HER ZAMAN burada
- * buyutulup CSS'e duz (transform'suz) metin olarak veriliyor.
- */
 function bannerText(text: string): string {
   return text.toUpperCase();
 }
@@ -128,10 +60,6 @@ export class DubScene extends Phaser.Scene {
 
   private availableScripts: DubScript[] = [];
   private levelsEl: HTMLElement | null = null;
-  // renderStart() birden fazla kez cagrilabildigi icin (bkz. create() ve
-  // "sahne bitince basa don" akisi) "?" yardim balonunun disina tiklayinca
-  // kapatan document-level listener HER SEFERINDE eskisi kaldirilip yeniden
-  // eklenir - aksi halde her donuste bir tane daha birikir (leak).
   private helpOutsideClickHandler: ((event: MouseEvent) => void) | null = null;
 
   private script: DubScript | null = null;
@@ -144,33 +72,15 @@ export class DubScene extends Phaser.Scene {
   private audioChunks: Blob[] = [];
   private isRecording = false;
   private recordAutoStopHandle: number | null = null;
-  // Oyuncunun kaydettigi her repligin sesi (bkz. submitRecording) - "Tum
-  // Sahneyi Dinle" (playFullScene) sirasinda kendi karakterinin repliklerinde
-  // orijinal ses yerine BUNU calmak icin bellekte tutulur (sadece bu sahne
-  // suresince - sekmeyi kapatinca/sahneden cikinca kaybolur, kalici degil).
   private recordedAudio = new Map<number, Blob>();
 
   private currentAudio: HTMLAudioElement | null = null;
   private playbackAbort = false;
-  // Script'in video_url'i varsa (bkz. DubScript.video_url) o anki ekranda
-  // (sira-sende/diger-sira/bitis) render edilen <video muted> elementine
-  // referans - karakterin AGIZ HAREKETLERINI gormek icin, ses HER ZAMAN
-  // ayri calinir (bkz. playAudioSegment/playRecordedBlob). Ekran degistikce
-  // mount() yeni bir DOM olusturdugu icin bu referans da yenilenir.
   private videoEl: HTMLVideoElement | null = null;
 
-  // "Sira sende" ekraninda replik puanlandiktan sonra gosterilen
-  // kelime-kelime dogruluk + yuzde alani (bkz. renderLineFeedback) - artik
-  // dugme satirinin YERINE gecmiyor (konsol ikonlari sabit kalmali),
-  // ayrica gosterilip gizleniyor (bkz. dub-studio-feedback).
   private turnFeedbackEl: HTMLElement | null = null;
   private turnRecordBtn: HTMLButtonElement | null = null;
   private turnContinueBtn: HTMLButtonElement | null = null;
-  // Puanlama bittiginde HEMEN ilerlemek yerine (eskisi gibi dinamik olarak
-  // eklenen tek kullanimlik "Devam Et" dugmesi) sabit konsol dugmesine
-  // click listener BIR KERE baglaniyor (bkz. renderYourTurn) - o an
-  // ilerlemenin ne yapacagini (hangi line/words/accuracy) burada saklayip
-  // tikaninca calistiriyoruz.
   private pendingContinueAction: (() => void) | null = null;
 
   constructor() {
@@ -187,42 +97,23 @@ export class DubScene extends Phaser.Scene {
   private async loadScripts(): Promise<void> {
     try {
       const scripts = await this.api.listScripts();
-      // Backend zaten zorluk puanina gore siralayip level numarasi atiyor
-      // (bkz. dub.py _compute_difficulty_score) - burada sadece savunma
-      // amacli tekrar sirala (level alani beklenmedik sekilde gelirse).
       this.availableScripts = [...scripts].sort((a, b) => a.level - b.level);
-      if (this.screen !== "start") return; // kullanici cok hizli ilerlediyse bu ekran artik yok
+      if (this.screen !== "start") return; // the user may have already left this screen
       this.renderLevelMap();
     } catch {
       this.availableScripts = [];
       if (this.screen === "start") {
-        this.setStatus("Sahneler yuklenemedi. Sunucu calisiyor mu? Sayfayi yenileyip tekrar dene.", true);
+        this.setStatus("Scenes could not be loaded. Is the server running? Refresh the page and try again.", true);
       }
     }
   }
 
   // ---------------------------------------------------------------------
-  // Ilerleme kaydi (localStorage) - henuz hesap/login sistemi olmadigi
-  // icin (proje karari: "en son islemimiz" login/signup) ilerleme
-  // TARAYICIDA, cihaza ozel tutulur. Script degistirmeden/karakter
-  // degistirmeden once bkz. dosya basi not: coklu oyuncu/hesap sistemi
-  // eklendiginde bu localStorage katmani sunucu tarafli bir progress
-  // tablosuyla (bkz. api/models/models.py VocabularyProgress ornegi) 1:1
-  // degistirilebilecek sekilde kasitli olarak kucuk ve izole tutuldu.
   // ---------------------------------------------------------------------
 
   private static readonly COMPLETION_KEY = "praglish.dub.completion.v1";
   private static readonly LAST_CHARACTER_KEY = "praglish.dub.lastCharacter.v1";
 
-  /**
-   * Replik replik dogruluk yuzdesi zaten OYUN SIRASINDA (bkz.
-   * renderLineFeedback) aninda gosteriliyor - ayrica saklamaya gerek yok.
-   * Burada sadece bir karakterin TAMAMLANMIS bir turunun ORTALAMA
-   * dogrulugu tutulur (bkz. renderFinished) - seviye haritasindaki
-   * user-ikonlari kac REPLIK degil, kac KARAKTER oldugunu gosterir; bir
-   * karakter en az bir kez tamamlanmissa o ikon yesile doner ve altta o
-   * karakterin toplam yuzdesi yazar.
-   */
   private loadCompletionStore(): Record<string, Record<string, number>> {
     try {
       const raw = window.localStorage.getItem(DubScene.COMPLETION_KEY);
@@ -236,7 +127,6 @@ export class DubScene extends Phaser.Scene {
     try {
       window.localStorage.setItem(DubScene.COMPLETION_KEY, JSON.stringify(store));
     } catch {
-      // localStorage yoksa/dolu ise ilerleme kaydedilemez ama oyun akisi bozulmaz.
     }
   }
 
@@ -273,26 +163,16 @@ export class DubScene extends Phaser.Scene {
       map[scriptId] = character;
       window.localStorage.setItem(DubScene.LAST_CHARACTER_KEY, JSON.stringify(map));
     } catch {
-      // yoksay - sadece "varsayilan secili karakter" hatirlanamaz
     }
   }
 
   // ---------------------------------------------------------------------
-  // Ekran 1: script secimi - "ahsap masa" arka plani uzerinde, her script
-  // icin bir "not kagidi yigini" karti (bkz. dosya basi NOTE_IMAGES/
-  // SCRIPT_NOTE_OVERRIDES). Referans tasarimdaki gibi karakter dugmeleri
-  // HER ZAMAN gorunur (eskisi gibi once numarali dugmeye tiklayip acmaya
-  // gerek yok) ve dugmelerde "Player N" degil o script'in GERCEK karakter
-  // isimleri yaziyor. Kartin altinda, sahnede kac KARAKTER varsa o kadar
-  // user-ikonu var; bir karakteri en az bir kez bastan sona tamamlamissa o
-  // ikon yesile doner, en altta en son secilen karakterin adi ve o
-  // karakterle alinan toplam (ortalama) dogruluk yuzdesi yaziyor.
   // ---------------------------------------------------------------------
 
   private renderLevelMap(): void {
     if (!this.levelsEl) return;
     if (this.availableScripts.length === 0) {
-      this.levelsEl.innerHTML = `<p class="dialogue-status">Henuz eklenmis bir sahne yok.</p>`;
+      this.levelsEl.innerHTML = `<p class="dialogue-status">No scenes have been added yet.</p>`;
       return;
     }
 
@@ -315,11 +195,6 @@ export class DubScene extends Phaser.Scene {
   }
 
   private renderLevelItemHtml(script: DubScript, index: number): string {
-    // NOT: kartta artik tamamlanma ikonlari/yuzdesi GOSTERILMIYOR (kullanici
-    // istegi - sade "afis" gorunumu). Altyapi (getCharacterCompletion,
-    // getLastCharacter, recordCharacterCompletion) kasitli olarak
-    // SILINMEDI: bu veri hala renderFinished'da yaziliyor ve ileride bir
-    // istatistik/ilerleme ekraninda tekrar kullanilabilir.
     const charsHtml = script.characters
       .map(
         (c, charIndex) =>
@@ -328,15 +203,6 @@ export class DubScene extends Phaser.Scene {
       .join("");
 
     const note = noteAssetForScript(script.id, index);
-    // ONEMLI: buyuk harfe cevirmeyi CSS'in text-transform:uppercase'ine
-    // BIRAKMIYORUZ - sayfa <html lang="tr"> oldugu icin tarayici "i" harfini
-    // Turkce kurallarina gore noktali "I" (İ) yapiyor ("Gulliver's" ->
-    // "GULLİVER'S", "Night"/"Living" -> "NİGHT"/"LİVİNG" gibi bozuk
-    // gorunumlere yol aciyordu). JS'in duz .toUpperCase()'i (locale
-    // belirtilmeden) bu ozel Turkce kurali UYGULAMAZ, bu yuzden metni
-    // BURADA buyutup CSS'te text-transform KULLANMIYORUZ. Once buyut,
-    // SONRA escape et - tersi olsaydi (once escape) ileride baslikta "&"
-    // gibi bir karakter cikarsa "&amp;" -> "&AMP;" olup bozulurdu.
     const displayTitle = this.escapeHtml(script.title.toUpperCase());
 
     return `
@@ -350,7 +216,6 @@ export class DubScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------
-  // Genel yardimcilar
   // ---------------------------------------------------------------------
 
   private teardown(): void {
@@ -368,14 +233,6 @@ export class DubScene extends Phaser.Scene {
     this.panel = null;
   }
 
-  /**
-   * "Sira Sende"/"Sirasi Baskasinda" ekranlarindaki BACK: tum sahneden
-   * (MenuScene'e) atilmak yerine bir onceki adima, script/karakter secim
-   * ekranina (renderStart - "Listen & Repeat") doner. teardown()'un aksine
-   * sahneyi TERK ETMIYORUZ - sadece devam eden ses/kayit/video temizlenip
-   * mevcut denemenin durumu (resetState) sifirlanir; availableScripts hala
-   * yuklu oldugu icin renderStart() listeyi yeniden fetch etmeden gosterir.
-   */
   private exitToLevelSelect(): void {
     this.playbackAbort = true;
     this.stopCurrentAudio();
@@ -400,14 +257,6 @@ export class DubScene extends Phaser.Scene {
     this.statusEl.classList.toggle("dub-status-error", isError);
   }
 
-  /**
-   * `onExit` verilmezse [data-action="exit"] varsayilan olarak ana menuye
-   * doner (exitToMenu). "Sira Sende"/"Sirasi Baskasinda" ekranlari (bkz.
-   * renderYourTurn/renderOtherTurn) burayi ana menu yerine script/karakter
-   * secim ekranina (exitToLevelSelect) donecek sekilde EZER - kullanici o
-   * ekranlardaki BACK'e bastiginda tum sahneden atilmak yerine bir onceki
-   * adima (Listen & Repeat) dogru geri gider.
-   */
   private mount(html: string, onExit: () => void = () => this.exitToMenu()): HTMLElement {
     this.panel?.destroy();
     const dom = this.add.dom(640, 360).createFromHTML(html);
@@ -425,24 +274,12 @@ export class DubScene extends Phaser.Scene {
     return node;
   }
 
-  /**
-   * Sahne secim masasini ve seslendirme studyosunu FIT canvas'in disindaki
-   * letterbox alanlarina da yayar. Ozet/ilerleme defterinde ve baska bir
-   * Phaser sahnesine geciste iki body sinifi da hemen temizlenir.
-   */
   private setScreenBackdrop(backdrop: "levels" | "studio" | null): void {
     document.body.classList.toggle("dub-levels-backdrop", backdrop === "levels");
     document.body.classList.toggle("dub-studio-backdrop", backdrop === "studio");
     this.cameras.main.setBackgroundColor(backdrop ? "rgba(0, 0, 0, 0)" : "#15111f");
   }
 
-  /**
-   * Verilen node icindeki `[data-role="<dataRole>"]` <video> elementini
-   * bulur, script'in video_url'i varsa src'sini ayarlayip this.videoEl'e
-   * atar (yoksa gizler/null birakir). Her ekran mount() ile YENIDEN DOM
-   * kurdugu icin bu her renderYourTurn/renderOtherTurn/renderFinished
-   * cagrisinda tekrar cagrilir.
-   */
   private setupVideoElement(node: HTMLElement, dataRole: string): void {
     const video = node.querySelector(`[data-role="${dataRole}"]`) as HTMLVideoElement | null;
     if (!video) {
@@ -461,12 +298,6 @@ export class DubScene extends Phaser.Scene {
     this.videoEl = video;
   }
 
-  /**
-   * this.videoEl'i [start, end) araligina gore oynatir - karakterin agiz
-   * hareketlerini SESSIZ olarak gostermek icin (gercek ses ayri calinir,
-   * bkz. playAudioSegment/playRecordedBlob). end null ise video kendi
-   * dogal akisinda devam eder (disaridan stopVideoElement ile durdurulmali).
-   */
   private playVideoRange(start: number, end: number | null): void {
     const video = this.videoEl;
     if (!video) return;
@@ -480,7 +311,6 @@ export class DubScene extends Phaser.Scene {
     const startPlayback = (): void => {
       video.currentTime = start;
       video.play().catch(() => {
-        /* video sessiz oldugu icin autoplay engeli beklenmez, yine de sessizce yut */
       });
     };
     if (video.readyState >= 1) {
@@ -516,38 +346,27 @@ export class DubScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------
-  // Ekran 1: baslangic (sahne + karakter secimi)
   // ---------------------------------------------------------------------
 
   private renderStart(): void {
     this.screen = "start";
-    // NOT: bu ekranin basligi artik klasik .dialogue-header (kalin yazi +
-    // "x" kapat) degil - kullanicinin referans aldigi ahsap "SELECT A
-    // SCRIPT"/"BACK" afisleri gibi UC AYRI eleman: solda ahsap "BACK"
-    // dugmesi (data-action="exit" ayni - mount() bunu genel olarak
-    // dinliyor), ortada dekoratif ahsap "LISTEN & REPEAT" afisi, sagda
-    // uzerine gelince/dokununca aciklama balonu acan "?" yardim ikonu -
-    // eski aciklama metni artik hep-gorunur degil, bu balonun icinde.
-    // [data-role="status"] YINE DE panelde duruyor (bos baslar) - cunku
-    // loadScripts() basarisiz olursa setStatus() ile hata mesaji BURAYA
-    // yazilir (bkz. loadScripts).
     const node = this.mount(`
       <div class="dialogue-panel dub-panel dub-panel--levels">
         <div class="dub-levels-header">
-          <button type="button" class="dub-wood-btn dub-wood-btn--back" data-action="exit" aria-label="Geri don">BACK</button>
+          <button type="button" class="dub-wood-btn dub-wood-btn--back" data-action="exit" aria-label="Go back">BACK</button>
           <div class="dub-wood-banner">LISTEN &amp; REPEAT</div>
-          <button type="button" class="dub-help-icon dub-journal-icon" data-action="open-journal" aria-label="Ilerleme Defteri" title="Ilerleme Defteri">&#128214;</button>
+          <button type="button" class="dub-help-icon dub-journal-icon" data-action="open-journal" aria-label="Progress Journal" title="Progress Journal">&#128214;</button>
           <div class="dub-help" data-role="help">
-            <button type="button" class="dub-help-icon" data-action="toggle-help" aria-label="Yardim">?</button>
+            <button type="button" class="dub-help-icon" data-action="toggle-help" aria-label="Help">?</button>
             <div class="dub-help-tooltip" role="tooltip">
-              <strong>Sahneyi Seslendir</strong>
-              Bir seviye sec, ardindan seslendirmek istedigin karakteri belirle.
+              <strong>Dub the Scene</strong>
+              Choose a level, then select the character you want to perform.
             </div>
           </div>
         </div>
         <div class="dialogue-status dub-levels-status" data-role="status"></div>
         <div class="dub-body dub-levels-body">
-          <div class="dub-levels" data-role="levels"><p class="dialogue-status">Yukleniyor...</p></div>
+          <div class="dub-levels" data-role="levels"><p class="dialogue-status">Loading...</p></div>
         </div>
       </div>
     `);
@@ -560,10 +379,6 @@ export class DubScene extends Phaser.Scene {
       event.stopPropagation();
       helpEl?.classList.toggle("open");
     });
-    // Dokunmatik/mobil: yardim balonunun disina dokununca kapat (hover'i
-    // olmayan cihazlarda "?" tekrar basilana kadar acik kalmasin diye).
-    // Eski listener'i (varsa) kaldirmadan yenisini eklemek renderStart()
-    // her cagrildiginda bir tane daha biriktirir - once temizle.
     if (this.helpOutsideClickHandler) {
       document.removeEventListener("click", this.helpOutsideClickHandler);
     }
@@ -580,22 +395,7 @@ export class DubScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------
-  // "Ilerleme Defteri" - RoomScene/LibraryScene'e
-  // ekledigi genel DashboardScene'in (bkz. DashboardScene.ts renderShell) AYNI
-  // kabugunu (.progress-dashboard/.progress-header/.paper-close/.paper-book/
-  // .paper-page/.book-spine - hepsi index.html'de tanimli, boyutu da dahil
-  // DEGISTIRILMEDEN) burada BIREBIR tekrar kullanir; degisen tek sey icerik:
-  // DashboardScene'in genel RPG istatistikleri (grammar/vocab/idiom) yerine
-  // bu sahnenin kendi ilerlemesi (script/karakter bazli ortalama dogruluk -
-  // bkz. loadCompletionStore) gosterilir. Sekme (paper-tabs) yok - tek bir
-  // OZET+SENARYOLAR sayfasi yeterli. Kapat butonu "CLOSE" - klavye P/ESC
-  // kisayolu bu ekranda yok, bu yuzden DashboardScene'deki "P / ESC · CLOSE"
-  // yerine sade "CLOSE" kullanilir. Ayri bir sahneye gecmek (DashboardScene)
-  // yerine bunu DubScene'in KENDI ekrani yapmamizin sebebi: veri modeli farkli
-  // (script/karakter ilerlemesi DashboardScene'in API'siyle uyusmuyor).
-  // Kapat/CLOSE her zaman renderStart()'a doner (defter sadece Listen &
-  // Repeat ekranindan acilabildigi icin ana menuye degil, oraya geri donmek
-  // dogru davranis).
+  // Journal shell (.progress-dashboard/.progress-header/.paper-close/.paper-book/
   // ---------------------------------------------------------------------
 
   private renderJournal(): void {
@@ -624,10 +424,10 @@ export class DubScene extends Phaser.Scene {
 
     const overviewHtml = `
       <div class="paper-stat-grid">
-        <div><span>DENENEN SENARYO</span><strong>${scriptsStarted}/${scripts.length}</strong></div>
-        <div><span>TAMAMLANAN KARAKTER</span><strong>${completedCharacterCount}</strong></div>
-        <div><span>ORTALAMA DOGRULUK</span><strong>%${averageAccuracy}</strong></div>
-        <div><span>EN IYI SONUC</span><strong>%${bestAccuracy}</strong></div>
+        <div><span>SCENARIOS ATTEMPTED</span><strong>${scriptsStarted}/${scripts.length}</strong></div>
+        <div><span>CHARACTERS COMPLETED</span><strong>${completedCharacterCount}</strong></div>
+        <div><span>AVERAGE ACCURACY</span><strong>${averageAccuracy}%</strong></div>
+        <div><span>BEST RESULT</span><strong>${bestAccuracy}%</strong></div>
       </div>
     `;
 
@@ -652,23 +452,23 @@ export class DubScene extends Phaser.Scene {
             return `<div class="journal-script"><b>${this.escapeHtml(script.title)}</b>${rows}</div>`;
           })
           .join("")
-      : `<div class="paper-empty">Henuz senaryo yuklenmedi.</div>`;
+      : `<div class="paper-empty">No scenarios have been loaded yet.</div>`;
 
     this.mount(
       `
-      <section class="progress-dashboard dub-journal-dashboard" aria-label="Ilerleme defteri">
+      <section class="progress-dashboard dub-journal-dashboard" aria-label="Progress journal">
         <header class="progress-header">
           <div><strong>PRAGLISH JOURNAL</strong><span>MY LEARNING ADVENTURE</span></div>
           <button type="button" class="paper-close" data-action="exit">CLOSE</button>
         </header>
         <div class="paper-book">
           <section class="paper-page left">
-            <h1>OZET</h1>
+            <h1>SUMMARY</h1>
             <div class="paper-scroll">${overviewHtml}</div>
           </section>
           <div class="book-spine"></div>
           <section class="paper-page right">
-            <h1>SENARYOLAR</h1>
+            <h1>SCENARIOS</h1>
             <div class="paper-scroll">${scriptsHtml}</div>
           </section>
         </div>
@@ -689,7 +489,6 @@ export class DubScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------
-  // Sahne ilerleme - her replikte kimin sirasi oldugunu kontrol eder
   // ---------------------------------------------------------------------
 
   private advanceLine(): void {
@@ -700,8 +499,6 @@ export class DubScene extends Phaser.Scene {
     }
     const line = this.script.lines[this.lineIndex];
     if (!line) {
-      // lineIndex kontrolu yukarida yapildi, buraya normalde hic dusmez -
-      // TypeScript'in noUncheckedIndexedAccess kurali icin savunma amacli.
       this.renderFinished();
       return;
     }
@@ -712,12 +509,6 @@ export class DubScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * Bir replik icin referans sesi calar: script gercek bir klibe
-   * dayaniyorsa (bkz. DubScript.audio_url) o klibin [start, end) araligini,
-   * yoksa TTS ile o an sentezlenmis sesi. `volume` sadece "Tum Sahneyi
-   * Dinle" (playFullScene) adiminda 1'den farkli olur.
-   */
   private playReferenceForLine(line: DubScriptLine, volume: number): Promise<void> {
     if (this.script?.audio_url && line.start_seconds !== undefined && line.start_seconds !== null) {
       return this.playAudioSegment(this.script.audio_url, line.start_seconds, line.end_seconds ?? null, volume);
@@ -726,31 +517,22 @@ export class DubScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------------
-  // Ekran 2a: sira sende (dinle -> tekrar et -> kaydet -> puanla)
   // ---------------------------------------------------------------------
 
   private renderYourTurn(line: DubScriptLine): void {
     this.screen = "your-turn";
     const total = this.script!.lines.length;
-    // NOT: bu ekran artik kullanicinin verdigi "dublaj studyosu" gorseli
-    // uzerine kurulu (bkz. STUDIO_BG_URL / .dub-panel--studio) - video
-    // eski TV'nin siyah ekranina, "tekrar dinle/kaydet/devam et" ikonlari
-    // ise ekranin altindaki UC konsol dugmesinin TAM UZERINE sabit
-    // konumlandiriliyor (bkz. .dub-console-btn--replay/record/continue).
-    // Puanlama sonrasi gosterilen kelime/yuzde artik dugmelerin YERINE
-    // gecmiyor (o dugmeler HEP AYNI yerde kalmali) - ayri bir
-    // dub-studio-feedback alaninda gosterilip gizleniyor.
     const node = this.mount(`
       <div class="dialogue-panel dub-panel dub-panel--studio">
-        <div class="dialogue-status dub-studio-status" data-role="status">${this.escapeHtml(this.myCharacter)}: Repligi dinliyorsun...</div>
+        <div class="dialogue-status dub-studio-status" data-role="status">${this.escapeHtml(this.myCharacter)}: Listening to your line...</div>
         <div class="dub-studio-stage">
-          <div class="dub-studio-tag">Replik ${this.lineIndex + 1}/${total}</div>
+          <div class="dub-studio-tag">Line ${this.lineIndex + 1}/${total}</div>
           <video class="dub-studio-video" data-role="line-video" muted playsinline></video>
           <div class="dub-studio-feedback" data-role="line-feedback" hidden></div>
-          <button type="button" class="dub-console-btn dub-console-btn--back" data-action="exit" title="Geri don" aria-label="Geri don">BACK</button>
-          <button type="button" class="dub-console-btn dub-console-btn--replay" data-action="replay" title="Tekrar Dinle" aria-label="Tekrar Dinle">${ICON_REPLAY}</button>
-          <button type="button" class="dub-console-btn dub-console-btn--record" data-action="record" data-role="record-btn" disabled title="Kayda Basla" aria-label="Kayda Basla">${ICON_MIC}</button>
-          <button type="button" class="dub-console-btn dub-console-btn--continue" data-action="continue" data-role="continue-btn" disabled title="Devam Et" aria-label="Devam Et">${ICON_CONTINUE}</button>
+          <button type="button" class="dub-console-btn dub-console-btn--back" data-action="exit" title="Go back" aria-label="Go back">BACK</button>
+          <button type="button" class="dub-console-btn dub-console-btn--replay" data-action="replay" title="Listen again" aria-label="Listen again">${ICON_REPLAY}</button>
+          <button type="button" class="dub-console-btn dub-console-btn--record" data-action="record" data-role="record-btn" disabled title="Start recording" aria-label="Start recording">${ICON_MIC}</button>
+          <button type="button" class="dub-console-btn dub-console-btn--continue" data-action="continue" data-role="continue-btn" disabled title="Continue" aria-label="Continue">${ICON_CONTINUE}</button>
         </div>
       </div>
     `,
@@ -789,7 +571,7 @@ export class DubScene extends Phaser.Scene {
 
     void playReference().then(() => {
       recordBtn.disabled = false;
-      this.setStatus(`${this.myCharacter}: Simdi sirayla tekrar et - kaydi baslat.`);
+      this.setStatus(`${this.myCharacter}: Now repeat the line and start recording.`);
     });
   }
 
@@ -808,22 +590,10 @@ export class DubScene extends Phaser.Scene {
       });
       URL.revokeObjectURL(url);
     } catch {
-      this.setStatus("Ses hazirlanamadi - yine de tekrar edebilirsin.");
+      this.setStatus("Audio could not be prepared, but you can still repeat the line.");
     }
   }
 
-  /**
-   * Oyuncunun daha once kaydettigi (bkz. submitRecording -> recordedAudio)
-   * bir repligin sesini calar - "Tum Sahneyi Dinle"de kendi karakterinin
-   * repliklerinde ORIJINAL ses yerine bu kullanilir (bkz. playFullScene).
-   * `videoRange` verilirse (o repligin start/end saniyeleri), ses oyuncunun
-   * KENDI KAYDI olsa bile karakterin ORIJINAL (sessiz) video goruntusu ayni
-   * aralikta paralel oynatilir - yani "dublaj" hissi: goruntu orijinal
-   * oyuncudan, ses senden. Kayit suresi video araligindan farkli olabilir
-   * (kullanicinin soyleme hizi), bu durumda video kendi araliginin sonunda
-   * durur, ses (varsa) bagimsiz devam eder - kucuk bir senkron kaybi kabul
-   * edilebilir, onemli olan gorsel baglam.
-   */
   private async playRecordedBlob(
     blob: Blob,
     volume = 1,
@@ -844,22 +614,11 @@ export class DubScene extends Phaser.Scene {
     URL.revokeObjectURL(url);
   }
 
-  /**
-   * Gercek bir ses klibinden (game/public/assets/dub/... - Vite tarafindan
-   * servis edilir, orn. Charade (1963)'ten cikarilmis SADECE SES dosyasi)
-   * [start, end) araligini oynatir. Sunucu klibi hicbir sekilde
-   * kesmiyor/donusturmuyor (ffmpeg yok) - sadece tarayicida oynatma
-   * pozisyonu/ses seviyesi kontrol ediliyor (bkz. dub.py dosya basi mimari
-   * notu).
-   */
   private async playAudioSegment(url: string, start: number, end: number | null, volume = 1): Promise<void> {
     this.stopCurrentAudio();
     const audio = new Audio(url);
     audio.volume = volume;
     this.currentAudio = audio;
-    // Ses klibiyle AYNI kaynaktan, AYNI zaman cizelgesiyle kirpilmis SESSIZ
-    // video varsa (bkz. DubScript.video_url), karakterin agiz hareketlerini
-    // gormek icin sesle PARALEL, ayni [start, end) araliginda oynatilir.
     this.playVideoRange(start, end);
 
     await new Promise<void>((resolve) => {
@@ -901,7 +660,7 @@ export class DubScene extends Phaser.Scene {
 
   private async startRecording(): Promise<void> {
     if (!navigator.mediaDevices?.getUserMedia) {
-      this.setStatus("Bu tarayicida mikrofon destegi yok.");
+      this.setStatus("This browser does not support microphone recording.");
       return;
     }
     try {
@@ -919,16 +678,16 @@ export class DubScene extends Phaser.Scene {
       this.mediaRecorder = recorder;
       recorder.start();
       this.isRecording = true;
-      this.setStatus("Kayittasin... bitirince tekrar butona bas.");
+      this.setStatus("Recording... press the button again when you are finished.");
       if (this.turnRecordBtn) {
         this.turnRecordBtn.innerHTML = ICON_STOP;
-        this.turnRecordBtn.title = "Kaydi Bitir";
-        this.turnRecordBtn.setAttribute("aria-label", "Kaydi Bitir");
+        this.turnRecordBtn.title = "Stop recording";
+        this.turnRecordBtn.setAttribute("aria-label", "Stop recording");
         this.turnRecordBtn.classList.add("recording");
       }
       this.recordAutoStopHandle = window.setTimeout(() => this.finishRecording(), RECORDING_AUTO_STOP_MS);
     } catch {
-      this.setStatus("Mikrofon izni verilmedi.");
+      this.setStatus("Microphone permission was not granted.");
     }
   }
 
@@ -944,13 +703,10 @@ export class DubScene extends Phaser.Scene {
     if (!this.isRecording) return;
     this.isRecording = false;
     this.mediaRecorder?.stop();
-    // Ikonu hemen mikrofona geri dondur ve dugmeyi devre disi birak -
-    // submitRecording sonuclaninca (basarili/basarisiz) uygun sekilde
-    // tekrar ayarlanir (bkz. renderLineFeedback / describeError sonrasi).
     if (this.turnRecordBtn) {
       this.turnRecordBtn.innerHTML = ICON_MIC;
-      this.turnRecordBtn.title = "Kayda Basla";
-      this.turnRecordBtn.setAttribute("aria-label", "Kayda Basla");
+      this.turnRecordBtn.title = "Start recording";
+      this.turnRecordBtn.setAttribute("aria-label", "Start recording");
       this.turnRecordBtn.classList.remove("recording");
       this.turnRecordBtn.disabled = true;
     }
@@ -960,43 +716,26 @@ export class DubScene extends Phaser.Scene {
     const script = this.script;
     if (!script) return;
     const line = script.lines[this.lineIndex];
-    if (!line) return; // guvenlik amacli - normalde bu index her zaman gecerli
+    if (!line) return; // defensive guard; this index should normally be valid
     const recordedType = this.mediaRecorder?.mimeType || "audio/webm";
     const blob = new Blob(this.audioChunks, { type: recordedType });
     this.audioChunks = [];
     if (blob.size === 0) {
-      this.setStatus("Ses kaydedilemedi - tekrar dene.");
-      // finishRecording() kayit dugmesini devre disi birakmisti (bkz.
-      // orada) - puanlanacak bir sey olmadigi icin BURADA tekrar
-      // deneyebilsin diye geri aciyoruz.
+      this.setStatus("Audio could not be recorded. Try again.");
       if (this.turnRecordBtn) this.turnRecordBtn.disabled = false;
       return;
     }
-    // "Tum Sahneyi Dinle"de bu repligi ORIJINAL ses yerine bununla degistirmek
-    // icin sakla (bkz. playFullScene) - puanlama basarisiz olsa bile kayit
-    // yine de burada kalir, kullanici en azindan kendi seslendirmesini dinleyebilir.
     this.recordedAudio.set(line.id, blob);
-    this.setStatus("Degerlendiriliyor...");
+    this.setStatus("Evaluating...");
     try {
       const result = await this.api.scoreLine(script.id, line.id, blob);
       this.renderLineFeedback(line, result.words, result.accuracy_percent);
     } catch (error: unknown) {
-      this.setStatus(this.describeError(error, "Degerlendirme basarisiz oldu."));
-      // Puanlama basarisiz oldu - kullanici ayni repligi tekrar
-      // kaydedebilsin diye mikrofon dugmesini geri ac.
+      this.setStatus(this.describeError(error, "Evaluation failed."));
       if (this.turnRecordBtn) this.turnRecordBtn.disabled = false;
     }
   }
 
-  /**
-   * Puanlama sonucunu gosterir. ESKIDEN bu, dugme satirinin (turn-body)
-   * TUM icerigini "Devam Et" dugmesiyle degistiriyordu - artik konsol
-   * ikonlari (bkz. .dub-studio-stage) HEP AYNI 3 sabit yerde kaliyor:
-   * kelime/yuzde ayri bir dub-studio-feedback alaninda gosterilir, "devam
-   * et" ikonu (zaten DOM'da, disabled) burada aktif edilir ve tiklaninca
-   * ne yapacagi pendingContinueAction'a yazilir (bkz. renderYourTurn'deki
-   * continueBtn click listener).
-   */
   private renderLineFeedback(line: DubScriptLine, words: WordVerdict[], accuracy: number): void {
     const feedbackEl = this.turnFeedbackEl;
     if (feedbackEl) {
@@ -1005,7 +744,7 @@ export class DubScene extends Phaser.Scene {
         .join("");
       feedbackEl.innerHTML = `
         <div>${wordsHtml}</div>
-        <div class="dub-turn-indicator">Dogruluk: %${accuracy}</div>
+        <div class="dub-turn-indicator">Accuracy: ${accuracy}%</div>
       `;
       feedbackEl.hidden = false;
     }
@@ -1016,29 +755,25 @@ export class DubScene extends Phaser.Scene {
       this.lineIndex += 1;
       this.advanceLine();
     };
-    this.setStatus("Tamamlandi.");
+    this.setStatus("Complete.");
   }
 
   // ---------------------------------------------------------------------
-  // Ekran 2b: sira baskasinda - orijinal ses tam seviyede calar
   // ---------------------------------------------------------------------
 
   private renderOtherTurn(line: DubScriptLine): void {
     this.screen = "other-turn";
     const total = this.script!.lines.length;
-    // Bu ekranda kayit YOK (bkz. dosya basi mimari notu - repligin sahibi
-    // sen degilsin) - bu yuzden konsolda sadece "tekrar dinle" ve "devam
-    // et" ikonlari var, orta (yesil/mikrofon) dugme hic render edilmiyor.
     const node = this.mount(`
       <div class="dialogue-panel dub-panel dub-panel--studio">
-        <div class="dialogue-status dub-studio-status" data-role="status">${this.escapeHtml(line.speaker)}: Dinliyorsun...</div>
+        <div class="dialogue-status dub-studio-status" data-role="status">${this.escapeHtml(line.speaker)}: Listening...</div>
         <div class="dub-studio-caption">&ldquo;${this.escapeHtml(line.text)}&rdquo;</div>
         <div class="dub-studio-stage">
-          <div class="dub-studio-tag">Replik ${this.lineIndex + 1}/${total}</div>
+          <div class="dub-studio-tag">Line ${this.lineIndex + 1}/${total}</div>
           <video class="dub-studio-video" data-role="line-video" muted playsinline></video>
-          <button type="button" class="dub-console-btn dub-console-btn--back" data-action="exit" title="Geri don" aria-label="Geri don">BACK</button>
-          <button type="button" class="dub-console-btn dub-console-btn--replay" data-action="replay" title="Tekrar Dinle" aria-label="Tekrar Dinle">${ICON_REPLAY}</button>
-          <button type="button" class="dub-console-btn dub-console-btn--continue" data-action="continue" disabled title="Devam Et" aria-label="Devam Et">${ICON_CONTINUE}</button>
+          <button type="button" class="dub-console-btn dub-console-btn--back" data-action="exit" title="Go back" aria-label="Go back">BACK</button>
+          <button type="button" class="dub-console-btn dub-console-btn--replay" data-action="replay" title="Listen again" aria-label="Listen again">${ICON_REPLAY}</button>
+          <button type="button" class="dub-console-btn dub-console-btn--continue" data-action="continue" disabled title="Continue" aria-label="Continue">${ICON_CONTINUE}</button>
         </div>
       </div>
     `,
@@ -1063,22 +798,17 @@ export class DubScene extends Phaser.Scene {
 
     void playReference().then(() => {
       continueBtn.disabled = false;
-      this.setStatus("Devam etmek icin butona bas.");
+      this.setStatus("Press the button to continue.");
     });
   }
 
   // ---------------------------------------------------------------------
-  // Ekran 3: bitis - kendi repliklerinin puanlari + tum sahneyi dinle
   // ---------------------------------------------------------------------
 
   private renderFinished(): void {
     this.screen = "finished";
     this.playbackAbort = true;
 
-    // Sahne (bu karakter icin) bastan sona tamamlandi - seviye haritasindaki
-    // ilgili user-ikonunu yesile cevirmek ve altinda gosterilecek toplam
-    // yuzdeyi hesaplamak icin ortalama dogrulugu kaydet (bkz. dosya basi not:
-    // replik replik detay degil, sadece karakter+ortalama saklaniyor).
     if (this.script && this.summary.length > 0) {
       const averageAccuracy = Math.round(
         this.summary.reduce((sum, entry) => sum + entry.accuracy_percent, 0) / this.summary.length,
@@ -1103,16 +833,16 @@ export class DubScene extends Phaser.Scene {
     const node = this.mount(`
       <div class="dialogue-panel dub-panel">
         <div class="dialogue-header">
-          <strong>Sahne tamamlandi!</strong>
-          <span>${this.escapeHtml(this.myCharacter)} olarak nasil gitti?</span>
+          <strong>Scene complete!</strong>
+          <span>How did your performance as ${this.escapeHtml(this.myCharacter)} go?</span>
           <button type="button" class="dialogue-close" data-action="exit" aria-label="Close">x</button>
         </div>
-        <div class="dialogue-status" data-role="status">Kendi repliklerini asagida gorebilir ya da tum sahneyi dinleyebilirsin.</div>
+        <div class="dialogue-status" data-role="status">Review your lines below or listen to the full scene.</div>
         <video class="dub-video" data-role="line-video" muted playsinline></video>
-        <div class="dub-body" data-role="summary-list">${linesHtml || "<p>Kayitli replik yok.</p>"}</div>
+        <div class="dub-body" data-role="summary-list">${linesHtml || "<p>No recorded lines.</p>"}</div>
         <div class="dub-row" style="margin-top:10px;">
-          <button type="button" class="dub-btn" data-action="play-all">Tum Sahneyi Dinle</button>
-          <button type="button" class="dub-btn secondary" data-action="restart">Yeniden Basla</button>
+          <button type="button" class="dub-btn" data-action="play-all">Play Full Scene</button>
+          <button type="button" class="dub-btn secondary" data-action="restart">Start Again</button>
         </div>
       </div>
     `);
@@ -1131,15 +861,6 @@ export class DubScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * Tum sahneyi bastan sona, repliklerin sirasina gore tek tek calar.
-   * Oyuncunun sectigi karakterin repliklerinde ORIJINAL ses yerine
-   * oyuncunun KENDI KAYDI calinir (bkz. recordedAudio/submitRecording) -
-   * yani sahnedeki o karakterin sesi gercekten oyuncununkiyle "dublajlanmis"
-   * olur. Bir replik icin herhangi bir sebeple kayit yoksa (orn. o repligi
-   * hic denemeden sahneyi bitirdiyse) DUCK_VOLUME'a kisilmis orijinal sese
-   * geri dusulur - digerleri (secilmeyen karakter) tam ses seviyesinde kalir.
-   */
   private async playFullScene(): Promise<void> {
     const script = this.script;
     if (!script) return;
@@ -1150,7 +871,7 @@ export class DubScene extends Phaser.Scene {
       const myRecording = isMine ? this.recordedAudio.get(line.id) : undefined;
 
       if (myRecording) {
-        this.setStatus(`Simdi calan: ${line.speaker} (senin seslendirmen)`);
+        this.setStatus(`Now playing: ${line.speaker} (your performance)`);
         const videoRange =
           line.start_seconds !== undefined && line.start_seconds !== null
             ? { start: line.start_seconds, end: line.end_seconds ?? null }
@@ -1158,12 +879,12 @@ export class DubScene extends Phaser.Scene {
         await this.playRecordedBlob(myRecording, 1, videoRange);
       } else {
         this.setStatus(
-          `Simdi calan: ${line.speaker}${isMine ? " (senin replik - kaydin yok, orijinal ses kisildi)" : ""}`,
+          `Now playing: ${line.speaker}${isMine ? " (your line has no recording; the original audio is lowered)" : ""}`,
         );
         await this.playReferenceForLine(line, isMine ? DUCK_VOLUME : 1);
       }
       await new Promise((resolve) => window.setTimeout(resolve, 250));
     }
-    if (!this.playbackAbort) this.setStatus("Sahne bitti.");
+    if (!this.playbackAbort) this.setStatus("Scene finished.");
   }
 }

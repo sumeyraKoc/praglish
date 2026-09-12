@@ -2,9 +2,9 @@ import hashlib
 import hmac
 import secrets
 
-# Hackathon MVP icin: bcrypt/passlib gibi ek bagimlilik eklemeden, Python'un
-# kendi guvenli PBKDF2 implementasyonuyla sifre hashliyoruz. "salt$hash" olarak
-# tek string'de saklaniyor.
+
+
+
 
 _ITERATIONS = 100_000
 

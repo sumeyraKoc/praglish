@@ -10,9 +10,8 @@ COPY shared/ ./shared
 
 EXPOSE 8001
 
-# api/Dockerfile'daki ile ayni sebep: Render (veya baska bir PaaS) kendi
-# PORT degiskenini enjekte eder ve container'in ONA bagli olmasini bekler.
-# ${PORT:-8001} sayesinde yerel docker-compose'da (PORT tanimli degil)
-# hala 8001'de dinler; Compose gelistirme ortaminda --reload komutunu ayrica
-# tanimlar. Production ise reload olmadan platformun verdigi PORT'u kullanir.
+# Render and other PaaS providers inject PORT and expect the container to bind
+# to it. ${PORT:-8001} keeps port 8001 as the local Docker Compose default;
+# Compose supplies its own --reload command for development, while production
+# uses the platform-provided port without reload.
 CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port \"${PORT:-8001}\""]

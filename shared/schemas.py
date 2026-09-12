@@ -1,8 +1,3 @@
-"""
-Ortak sozlesme: api servisi ile ai servisi arasindaki tum JSON alisverisi
-bu dosyadaki modellere gore yapilir. Bu dosyayi degistirirken ikiniz de
-haberdar olun, cunku her iki container da bu dosyayi kullaniyor.
-"""
 
 from typing import Any, Literal, Optional
 
@@ -15,14 +10,12 @@ class DialogueTurn(BaseModel):
 
 
 class NPCTask(BaseModel):
-    """NPC'nin senaryo boyunca yerine getirmesi gereken bir hedef."""
 
     id: str
     description: str
 
 
 class NPCIdentity(BaseModel):
-    """NPC modeline her turda verilen kimlik ve oyun baglami."""
 
     id: str
     name: str
@@ -35,7 +28,6 @@ class NPCIdentity(BaseModel):
 
 
 class LanguageEvaluationInput(BaseModel):
-    """P(U | C, S, L, G) tahmini icin evaluator girdileri."""
 
     utterance: str
     context: str
@@ -47,21 +39,18 @@ class LanguageEvaluationInput(BaseModel):
 
 
 class PlausibilityEstimate(BaseModel):
-    """Gemini'nin uretecegi yapilandirilmis tahmin."""
 
     probability_percent: float = Field(ge=0, le=100)
     brief_reason: str
 
 
 class LanguageEvaluationResult(PlausibilityEstimate):
-    """Yerel threshold karari eklenmis evaluator sonucu."""
 
     threshold: float = Field(ge=0, le=100)
     accepted: bool
 
 
 class CorrectionInput(BaseModel):
-    """Ayni evaluator history'si ve reddedilen son kullanici cumlesi."""
 
     model_config = ConfigDict(extra="forbid")
 

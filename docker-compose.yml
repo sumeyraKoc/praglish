@@ -23,22 +23,19 @@ services:
     ports:
       - "8001:8001"
     environment:
-      # Gemini doluysa Gemini, degilse (ve Groq doluysa) Groq kullanilir -
-      # bkz. ai/main.py > _active_ai_provider() ve README "AI saglayicisi".
+      # Use Gemini when configured; otherwise use Groq when its key is set.
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      # Istege bagli: ayri/ucretli bir projeye aitse yalnizca TTS bunu kullanir;
-      # bos birakilirsa TTS geriye uyumlu olarak GEMINI_API_KEY'e duser.
+      # Optional dedicated Gemini key for TTS. Falls back to GEMINI_API_KEY.
       - GEMINI_TTS_API_KEY=${GEMINI_TTS_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
-      # Bos birakilirsa ai/main.py GEMINI_MODEL'e duser (bkz. .env.example).
+      # When empty, ai/main.py falls back to GEMINI_MODEL.
       - GEMINI_EVALUATOR_MODEL=${GEMINI_EVALUATOR_MODEL:-}
       - CORRECTION_MODEL=${CORRECTION_MODEL:-gemini-3.5-flash-lite}
       - STT_MODEL=${STT_MODEL:-gemini-3.5-transcribe}
       - TTS_MODEL=${TTS_MODEL:-gemini-3.1-flash-tts-preview}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
-      # Evaluator/correction icin varsayilan olarak Groq'un hizli "instant"
-      # modeli - bkz. .env.example ve README "Yanit suresi" bolumu.
+      # Fast Groq "instant" model used by default for evaluation and correction.
       - GROQ_EVALUATOR_MODEL=${GROQ_EVALUATOR_MODEL:-llama-3.1-8b-instant}
       - GROQ_CORRECTION_MODEL=${GROQ_CORRECTION_MODEL:-llama-3.1-8b-instant}
       - GROQ_STT_MODEL=${GROQ_STT_MODEL:-whisper-large-v3-turbo}
@@ -47,7 +44,7 @@ services:
       - STT_MAX_AUDIO_BYTES=${STT_MAX_AUDIO_BYTES:-10485760}
     volumes:
       - whisper_cache:/root/.cache
-      - ./ai:/app          # canli kod guncelleme - --reload bunu izler
+      - ./ai:/app          # live code updates watched by --reload
       - ./shared:/app/shared
 
   api:
@@ -68,7 +65,7 @@ services:
       ai:
         condition: service_started
     volumes:
-      - ./api:/app          # canli kod guncelleme - --reload bunu izler
+      - ./api:/app          # live code updates watched by --reload
       - ./shared:/app/shared
 
   game:

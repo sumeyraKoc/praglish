@@ -22,9 +22,9 @@ class GameSession(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    location = Column(String)  # aktif: "bakery", "library" (planlanan: "cafe", "hospital", "school")
-    npc_role = Column(String)  # aktif: "baker", "librarian"
-    scenario_state = Column(JSON, default=dict)  # dict, {} degil - mutable default tuzagi
+    location = Column(String)
+    npc_role = Column(String)
+    scenario_state = Column(JSON, default=dict)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -33,21 +33,15 @@ class GameSession(Base):
 
 
 class Dialogue(Base):
-    """
-    Not: SQLAlchemy modelinin adi bilerek 'DialogueTurn' degil 'Dialogue'.
-    shared/schemas.py icinde LLM'e giden dialogue history icin zaten
-    Pydantic tarafinda DialogueTurn adinda bir model var - ikisini ayni
-    dosyada import etmek gerektiginde isim carpismasini onceden onluyoruz.
-    """
 
     __tablename__ = "dialogues"
 
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey("sessions.id"))
-    speaker = Column(String)  # "user", "npc" veya "coach"; coach su an persist edilmez
+    speaker = Column(String)
     text = Column(String)
 
-    # Language Evaluator'dan gelen sonuclar (sadece "user" satirlarinda dolu olur)
+
     is_natural = Column(Boolean, nullable=True)
     correction = Column(String, nullable=True)
 
@@ -57,12 +51,6 @@ class Dialogue(Base):
 
 
 class VocabularyProgress(Base):
-    """
-    Kullanicinin hangi kelime/es anlamliyi hangi konsept icin daha once
-    kazandigini tutar. Ayni kelime icin iki kere odul verilmesini hem
-    kod seviyesinde (routes/vocabulary.py) hem DB seviyesinde (UniqueConstraint)
-    engelliyoruz.
-    """
 
     __tablename__ = "vocabulary_progress"
     __table_args__ = (
@@ -78,7 +66,6 @@ class VocabularyProgress(Base):
 
 
 class LearningExtractionEvent(Base):
-    """Bir kullanici cumlesi icin ham ve denetlenebilir extractor sonucu."""
 
     __tablename__ = "learning_extraction_events"
 
@@ -86,14 +73,13 @@ class LearningExtractionEvent(Base):
     dialogue_id = Column(Integer, ForeignKey("dialogues.id"), unique=True, nullable=False)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    outcome = Column(String, nullable=False)  # correct / incorrect
+    outcome = Column(String, nullable=False)
     utterance = Column(String, nullable=False)
     raw_result = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class LearningTurnEvent(Base):
-    """Dashboard trendleri icin metin icermeyen, her turda yazilan olay."""
 
     __tablename__ = "learning_turn_events"
 
@@ -102,7 +88,7 @@ class LearningTurnEvent(Base):
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, index=True)
     dialogue_id = Column(Integer, ForeignKey("dialogues.id"), nullable=True, unique=True)
     location = Column(String, nullable=False, index=True)
-    outcome = Column(String, nullable=False)  # correct / incorrect
+    outcome = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 

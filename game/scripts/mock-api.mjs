@@ -23,11 +23,6 @@ function replyAudio(response, buffer) {
   response.end(buffer);
 }
 
-// Gercek TTS'in yerine gecen, calinabilir ama SESSIZ (silent) kucuk bir WAV
-// dosyasi uretir - amac tarayicinin <audio> API'sinin dogru sekilde bir ses
-// dosyasi aldigini test edebilmek (mikrofon -> STT -> tur -> TTS -> oynatma
-// akisinin tamami calissin), gercek Gemini sesini degil. Gercek konusan NPC
-// sesi icin ai container'inin (gercek Gemini TTS) ayakta olmasi gerekir.
 function buildSilentWav(durationSeconds = 0.4, sampleRate = 24000) {
   const sampleCount = Math.round(durationSeconds * sampleRate);
   const dataSize = sampleCount * 2; // 16-bit mono PCM
@@ -45,19 +40,12 @@ function buildSilentWav(durationSeconds = 0.4, sampleRate = 24000) {
   buffer.writeUInt16LE(16, 34); // bits per sample
   buffer.write("data", 36, "ascii");
   buffer.writeUInt32LE(dataSize, 40);
-  // PCM verisi zaten sifirla dolduruldu (Buffer.alloc) - bu sessizlik demek.
   return buffer;
 }
 
 const MOCK_TRANSCRIPT =
   "Hello, I would like to practice my English here, please.";
 
-// Gercek backend'deki VocabularyEngine'in cok basit bir taklidi. Gercek
-// kelime/es anlamli listelerini burada TEKRAR TANIMLAMIYORUZ (tek kaynak:
-// api/game_data/vocabulary/*.json) - bu mock sadece "her kelime ilk denemede
-// odul verir, ayni kelime ikinci kez denenirse already_earned doner" akisini
-// UI'da test etmenizi saglar; dogru/yanlis kelime kontrolu yapmaz (bunun icin
-// gercek api container'ina/docker compose'a ihtiyaciniz var).
 const earnedWords = new Map(); // key: `${location}:${concept}` -> Set<word lowercased>
 
 function keyFor(location, concept) {
@@ -127,7 +115,7 @@ const server = http.createServer((request, response) => {
         already_earned: false,
         reward_coins: 10,
         words_earned: words.size,
-        words_total: words.size + 1, // mock'ta gercek toplam bilinmiyor - her zaman "bir tane daha var" gibi gosterir
+        words_total: words.size + 1, // the mock does not know the real total, so it always shows one remaining word
         concept_completed: false,
         total_coins: 10 * words.size,
       });
@@ -135,9 +123,6 @@ const server = http.createServer((request, response) => {
     }
 
     if (request.method === "POST" && request.url === "/api/speech/stt") {
-      // Gercek ses -> metin donusumu ai container'inda (Gemini) yapiliyor; bu
-      // mock sadece mikrofon -> metin -> tur -> ses akisinin UI'da ucdan uca
-      // calistigini test edebilmeniz icin sabit bir metin donduruyor.
       reply(response, 200, {
         text: MOCK_TRANSCRIPT,
         language_code: "en-US",

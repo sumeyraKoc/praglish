@@ -23,10 +23,6 @@ const MIC_ICON_HTML = `
   </div>
 `;
 
-// Yeni bir mod eklendiginde tek yapilmasi gereken: buraya bir ModeCard daha
-// eklemek (gorsel icin ya mevcut asset'lerden bir collage - .menu-art-* -
-// ya da MIC_ICON_HTML gibi kucuk bir SVG). Aksordiyon, kart sayisi kadar
-// otomatik genisler.
 const MODE_CARDS: ModeCard[] = [
   {
     id: "roleplay",
@@ -34,7 +30,7 @@ const MODE_CARDS: ModeCard[] = [
     spineLabel: "ROLEPLAY",
     title: "Roleplay",
     description:
-      "Kutuphane ve firin gibi mekanlarda NPC'lerle konus, replik ver ve yeni kelimeler kazan.",
+      "Talk to NPCs in places such as the library and bakery, complete dialogue goals, and earn new words.",
     targetScene: "LibraryScene",
     artHtml: '<div class="menu-card-art menu-art-roleplay"></div>',
   },
@@ -42,24 +38,14 @@ const MODE_CARDS: ModeCard[] = [
     id: "dub",
     accent: "#78dce8",
     spineLabel: "LISTEN &amp; REPEAT",
-    title: "Sahneyi Seslendir",
+    title: "Dub the Scene",
     description:
-      "Bir sahne ve karakter sec, repliklerini tekrar et; sahne sonunda tum sahneyi kendi seslendirmenle dinle.",
+      "Choose a scene and character, perform your lines, then watch the full scene with your own voice.",
     targetScene: "DubScene",
     artHtml: MIC_ICON_HTML,
   },
 ];
 
-/**
- * Ana menu / mod secim ekrani. Login-signup akisi henuz yok, oyun su an
- * dogrudan bu menuden basliyor (bkz. main.ts sahne sirasi).
- *
- * Kapali (varsayilan) durumda her mod, hafifce ust uste binen dikey bir
- * "sirt" (spine) olarak durur. Uzerine gelince kart hafifce kalkar/egilir;
- * tiklaninca yatayda genisleyip gorseli, aciklamayi ve "Oyna" butonunu
- * gosterir, digerleri kucularak kenara cekilir. Ayni karta tekrar tiklamak
- * ya da baska bir karta tiklamak durumu degistirir.
- */
 export class MenuScene extends Phaser.Scene {
   private root: HTMLElement | null = null;
   private expandedId: string | null = null;
@@ -69,8 +55,6 @@ export class MenuScene extends Phaser.Scene {
   }
 
   public create(): void {
-    // Menu yeni bir roleplay ziyareti icin sinirdir. Oda gecisleri bu noktaya
-    // ugramadigi icin Maya ve Lina kendi ayri sohbetlerini hatirlamaya devam eder.
     PraglishApiClient.resetAllSessions();
     clearRememberedDialogues();
 
@@ -98,7 +82,7 @@ export class MenuScene extends Phaser.Scene {
             <div class="menu-card-info">
               <h3>${card.title}</h3>
               <p>${card.description}</p>
-              <button type="button" class="menu-play-btn" data-action="play" data-target="${card.targetScene}">Oyna</button>
+              <button type="button" class="menu-play-btn" data-action="play" data-target="${card.targetScene}">Play</button>
             </div>
           </div>
         </div>
@@ -109,7 +93,7 @@ export class MenuScene extends Phaser.Scene {
       <div class="menu-root">
         <div class="menu-heading">
           <strong>PRAGLISH</strong>
-          <span>Bir mod sec</span>
+          <span>Choose a mode</span>
         </div>
         <div class="menu-accordion" data-role="accordion">${cardsHtml}</div>
       </div>

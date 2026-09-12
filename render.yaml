@@ -1,24 +1,19 @@
-# Render Blueprint - "api" ve "ai" servislerini TEK dosyadan, tekrarlanabilir
-# sekilde tanimlar (bkz. https://render.com/docs/blueprint-spec).
+# Render Blueprint: defines the API and AI services reproducibly in one file.
+# See https://render.com/docs/blueprint-spec.
 #
-# Bu dosya SADECE Render'daki production deploy'u tanimlar - yerel
-# docker-compose.yml'e (Sumeyra'nin terminalden kullandigi local gelistirme
-# akisina) hicbir sekilde dokunmuyor, o dosya ve ai/Dockerfile'in yerel
-# kullanimi aynen kaliyor.
+# This file defines only the production deployment on Render. It does not
+# change the local Docker Compose development workflow.
 #
-# Kullanim:
-#   1) Render Dashboard > New > Blueprint > bu repo'yu secin.
-#   2) Render iki servisi (praglish-api, praglish-ai) otomatik olusturur;
-#      "sync: false" olan degiskenler icin deger girmenizi ister.
-#   3) praglish-ai servisi ilk kez deploy olup canliya gectiginde,
-#      Render'in ona verdigi gercek adresi (Settings sayfasinin ustunde
-#      yazar, orn. "https://praglish-ai-xxxx.onrender.com") kopyalayip
-#      praglish-api servisinin AI_SERVICE_URL degiskenine yapistirin ve
-#      USE_MOCK_AI'yi "false" yapip yeniden deploy edin.
-#   Bu adima kadar (veya ai servisini hic deploy etmeden hizli bir demo
-#   icin) USE_MOCK_AI=true birakabilirsiniz - o zaman api, ai servisine
-#   hic gitmeden sabit ama CALISAN bir cevap doner (bakery/library
-#   lokasyonlari icin tanimli, bkz. api/services/ai_client.py).
+# Usage:
+#   1) In Render, choose Dashboard > New > Blueprint and select this repository.
+#   2) Render creates praglish-api and praglish-ai and asks for values whose
+#      variables use "sync: false".
+#   3) After praglish-ai is live, copy its Render URL from the Settings page
+#      (for example, https://praglish-ai-xxxx.onrender.com) into the
+#      AI_SERVICE_URL variable of praglish-api. Set USE_MOCK_AI to "false" and
+#      redeploy the API.
+#   Until then, USE_MOCK_AI=true provides fixed but functional responses for
+#   the bakery and library without contacting the AI service.
 services:
   - type: web
     name: praglish-api
@@ -30,13 +25,13 @@ services:
       - key: PORT
         value: "10000"
       - key: DATABASE_URL
-        sync: false # mevcut Postgres baglanti string'iniz
+        sync: false # your existing PostgreSQL connection string
       - key: USE_MOCK_AI
-        value: "true" # praglish-ai servisini deploy edip AI_SERVICE_URL'i girdikten sonra "false" yapin
+        value: "true" # set to "false" after deploying praglish-ai and setting AI_SERVICE_URL
       - key: AI_SERVICE_URL
-        sync: false # praglish-ai servisinin gercek https://...onrender.com adresi (asagiya bakin)
+        sync: false # the public https://...onrender.com URL of praglish-ai
       - key: CORS_ORIGINS
-        value: "https://praglish.vercel.app" # gercek Vercel production domaininiz farkliysa guncelleyin
+        value: "https://praglish.vercel.app" # update if your production Vercel domain differs
 
   - type: web
     name: praglish-ai

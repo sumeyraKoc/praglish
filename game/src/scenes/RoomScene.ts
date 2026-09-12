@@ -27,19 +27,16 @@ const ISO_CONFIG: IsoConfig = {
 };
 
 const FURNITURE_LAYERS = new Set([
-  "bitki", "Mobilya", "mobilya5", "mabilya4", "mobilya3", "mabilya2",
+  "Plants", "Furniture", "Furniture 5", "Furniture 4", "Furniture 3", "Furniture 2",
 ]);
 
-const WALL_LAYERS = new Set(["köşe", "Duvar"]);
+const WALL_LAYERS = new Set(["Corners", "Walls"]);
 
 const PILLAR_ALIGNMENT_X = -12.5;
 const CASHIER_ALIGNMENT_X = 15;
 const CASHIER_ALIGNMENT_Y = 30;
 
 
-// Iki dolap gorsel olarak bitisik/birlesik tek bir tezgah gibi durmasi
-// gerekirken aralarindaki (haritada tile bulunmayan) hucre bloklu degildi -
-// oyuncu gorsel olarak dolu gorunen bu tezgahin ortasindan yuruyebiliyordu.
 const CAKE_CASE_GAP_GRID = { x: 3, y: 2 };
 
 const INTERACT_RANGE = 1.5;
@@ -70,7 +67,6 @@ export class RoomScene extends Phaser.Scene {
   private npcGrid = { x: 1, y: 1, z: 0 };
   private npcCollisionGrid = this.calculateNpcCollisionGrid();
 
-  // Vocabulary ("name it") etkilesim durumu
   private interactables: Interactable[] = [];
   private interactableTileKeys = new Set<string>();
   private earnedWords = new Map<string, Set<string>>();
@@ -89,7 +85,7 @@ export class RoomScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.json(MAP_KEY, "assets/bakery/Firin_Haritasi.tmj");
+    this.load.json(MAP_KEY, "assets/bakery/Bakery_Map.tmj");
     for (const asset of BAKERY_ASSETS) {
       this.load.image(asset.key, `assets/bakery/${asset.file}`);
     }
@@ -107,10 +103,6 @@ export class RoomScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor("#181525");
     this.createAnimations();
     this.renderMap(this.cache.json.get(MAP_KEY) as BakeryMapData);
-    // Iki pasta dolabi gorsel olarak bitisik tek bir tezgah gibi durmasi
-    // gerekirken haritada aralarindaki hucreye hic tile konulmamis, yani
-    // otomatik olarak bloklanmiyordu - oyuncu "dolu" gorunen tezgahin tam
-    // ortasindan yuruyebiliyordu (bkz. SECOND_CAKE_CASE_GAP_FIX_X yorumu).
     this.blockedTiles.add(`${CAKE_CASE_GAP_GRID.x},${CAKE_CASE_GAP_GRID.y}`);
 
     this.avatar = new IsoAvatar(this, { x: 4, y: 4, z: 0 }, {
@@ -136,9 +128,6 @@ export class RoomScene extends Phaser.Scene {
       }
       this.handleClickToWalk(pointer.worldX, pointer.worldY);
     });
-    // isTextEntryEvent guard'i: bir DOM input'u (orn. dublaj karakter secim
-    // ekranindaki script <select>'i ya da diyalog/kelime input'lari) odaktayken
-    // yazilan harflerin bu oyun kisayollarini tetiklemesini engeller.
     this.input.keyboard?.on("keydown-E", (event: KeyboardEvent) => {
       if (!isTextEntryEvent(event)) this.handleInteractKey();
     });
@@ -202,8 +191,6 @@ export class RoomScene extends Phaser.Scene {
       if (!this.anims.exists(walkKey)) {
         this.anims.create({
           key: walkKey,
-          // Yalnizca iki temiz satiri kullan. Ara satirlarda bir onceki
-          // karenin ayakkabi pikselleri hucrenin ustune tasiyor.
           frames: [0, 50].map((rowStart) => ({
             key: "player",
             frame: rowStart + column,
@@ -251,15 +238,7 @@ export class RoomScene extends Phaser.Scene {
       const assetOffsetX = asset.key === "pillar" 
         ? PILLAR_ALIGNMENT_X 
         : 0;
-      // Eskiden burada kasa/paspas icin ekstra +10 "one cek" (CHECKOUT_FORWARD_Y)
-      // vardi - Firin_Haritasi.tmj/tmx'te boyle bir ofset yok, sadece bizim
-      // kodumuzda vardi. Bu, kasanin GORSEL olarak kendi grid hucresinden
-      // (collision hala o hucrede kaliyor) asagi/one kaymasina, yani "kasa one
-      // gecmis" gorunumune VE kasanin asil hucresinin - artik gorsel olarak bos
-      // kalan yerin - hala blockedTiles'ta engelli gorunmesine yol aciyordu.
-      // Kaldirinca kasa, haritanin kendi (mobilya5 katmani) offsetiyle ayni
-      // hucrede hem gorunur hem collision'a sahip oluyor.
-      const isFloor = layer.name === "Zemin" || layer.name === "zemin2";
+      const isFloor = layer.name === "Floor" || layer.name === "Floor 2";
       const sprite = this.add.image(
         screen.x + layerOffsetX + assetOffsetX,
         screen.y + layerOffsetY + (isFloor ? 0 : TILE_SIZE / 2),
@@ -275,16 +254,6 @@ export class RoomScene extends Phaser.Scene {
             : calculateDepth({ x: gridX, y: gridY, z: 0 }) + 20,
       );
 
-      // ONEMLI DUZELTME: WALL_LAYERS ("köşe", "Duvar") sadece depth (cizim sirasi)
-      // icin kullaniliyordu, blockedTiles'a HIC eklenmiyordu - yani duvar
-      // tile'lari gorsel olarak duvar gibi gozukse de collision'a sahip degildi.
-      // Bu, "dolap ile kasa arasinda bosluk var, oradan yuruyor" seklinde
-      // bildirilen hatanin gercek nedeni: sol duvar (köşe katmani, x=0) uzerinde
-      // tall-shelf (0,0) ve bread-shelf (0,2) mobilyalari FURNITURE_LAYERS
-      // oldugu icin blokluydu, ama aralarindaki (0,1) hucresi SADECE duvar
-      // tile'i icerdigi icin (mobilya yok) bloksuz kalmisti - oyuncu "dolap"
-      // (raf) ile arka duvar arasindaki bu tek hucrelik bosluktan gecebiliyordu.
-      // Ayni sorun sag ust arka duvar (Duvar katmani, y=0) icin de gecerliydi.
       if (FURNITURE_LAYERS.has(layer.name)) {
         this.blockedTiles.add(`${gridX},${gridY}`);
       }
@@ -293,12 +262,6 @@ export class RoomScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * asset.key -> vocabulary concept eslemesi varsa (bkz. bakeryMap.ts ASSET_CONCEPT),
-   * bu tile'i "eşyanın yanına git, adını söyle" etkilesimine acik hale getirir.
-   * Ayni koordinata birden fazla katmandan tile dusebildigi icin tekrar eklemeyi
-   * interactableTileKeys ile engelliyoruz.
-   */
   private registerInteractable(assetKey: string, gridX: number, gridY: number): void {
     const concept = ASSET_CONCEPT[assetKey];
     if (!concept) return;
@@ -327,20 +290,9 @@ export class RoomScene extends Phaser.Scene {
       this.applyVocabularyProgress(progress);
       this.warnOnUnknownConcepts(progress);
     } catch {
-      // Sessizce yut - ilerleme cache'i yalnizca UX rozeti icin, oyunu bloke etmemeli.
     }
   }
 
-  /**
-   * Gelistirme zamani tutarlilik kontrolu: ASSET_CONCEPT (bakeryMap.ts) bir concept
-   * tanimliyor ama backend'in api/game_data/vocabulary/bakery.json dosyasinda o
-   * concept yoksa (yazim hatasi, unutulmus ekleme...), oyuncu o esyanin yaninda
-   * hicbir zaman coin kazanamaz - tek belirti backend'den gelen sessiz bir
-   * "Concept not found" hatasidir. Bunu erken, konsola acikca yazdirarak
-   * yakaliyoruz ki iki taraf birbirinden kopunca demo gunune kadar fark edilmeden
-   * kalmasin. Kelime/es anlamli listeleri burada tutulmuyor - tek paylasilan sey
-   * concept id string'leri, onlarin dogrulugunu burada kontrol ediyoruz.
-   */
   private warnOnUnknownConcepts(progress: VocabularyProgressEntry[]): void {
     const knownConcepts = new Set(progress.map((entry) => entry.concept));
     const usedConcepts = new Set(this.interactables.map((item) => item.concept));
@@ -348,8 +300,8 @@ export class RoomScene extends Phaser.Scene {
     if (unknown.length > 0) {
       console.warn(
         "[Praglish] bakeryMap.ts > ASSET_CONCEPT bu concept'leri kullaniyor ama " +
-          `api/game_data/vocabulary/bakery.json'da tanimli degiller: ${unknown.join(", ")}. ` +
-          "Oyuncu bu esyalar icin coin kazanamayacak - iki dosyayi senkronlayin.",
+          `They are not defined in api/game_data/vocabulary/bakery.json: ${unknown.join(", ")}. ` +
+          "Players cannot earn coins for these objects until the two files are synchronized.",
       );
     }
   }
@@ -369,14 +321,13 @@ export class RoomScene extends Phaser.Scene {
       .setOrigin(0.5, 0.92)
       .setScale(0.88)
       .setDepth(calculateDepth(this.npcCollisionGrid) + 2);
-    this.add.text(cashierX, cashierY - 72, "Maya · Fırıncı", {
+    this.add.text(cashierX, cashierY - 72, "Maya · Baker", {
       fontFamily: "Arial, sans-serif",
       fontSize: "14px",
       color: "#fff7df",
       backgroundColor: "#33264f",
       padding: { x: 8, y: 4 },
     }).setOrigin(0.5).setDepth(99999);
-    //this.blockedTiles.add(`${this.npcCollisionGrid.x},${this.npcCollisionGrid.y}`);
   }
 
   private createUi(): void {
@@ -385,7 +336,7 @@ export class RoomScene extends Phaser.Scene {
       fontSize: "22px",
       color: "#ffd166",
     }).setScrollFactor(0).setDepth(100000);
-    this.add.text(24, 54, "Zemine tıkla · E: Etkileşim · L: Library · P: Progress · M: Menu", {
+    this.add.text(24, 54, "Click the floor · E: Interact · L: Library · P: Progress · M: Menu", {
       fontFamily: "Arial, sans-serif",
       fontSize: "15px",
       color: "#ddd7ef",
@@ -430,24 +381,24 @@ export class RoomScene extends Phaser.Scene {
       });
 
     this.dialogue = this.add.dom(640, 590).createFromHTML(`
-      <section class="dialogue-panel" aria-label="Maya ile konuşma">
+      <section class="dialogue-panel" aria-label="Conversation with Maya">
         <header class="dialogue-header">
           <div><strong>MAYA</strong><span>BAKER · AI</span></div>
-          <button class="dialogue-close" type="button" aria-label="Konuşmayı kapat">ESC · close</button>
+          <button class="dialogue-close" type="button" aria-label="Close conversation">ESC · close</button>
         </header>
         <div class="dialogue-scrollable">
           <div class="dialogue-messages" aria-live="polite">
             <p class="dialogue-system">Write something in English to start the conversation.</p>
           </div>
-          <div class="dialogue-scroll-controls" aria-label="Konuşma geçmişini kaydır">
-            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Yukarı kaydır"></button>
+          <div class="dialogue-scroll-controls" aria-label="Scroll conversation history">
+            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Scroll up"></button>
             <span class="dialogue-scroll-track" aria-hidden="true"></span>
-            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Aşağı kaydır"></button>
+            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Scroll down"></button>
           </div>
         </div>
         <div class="dialogue-status">Not connected</div>
         <form class="dialogue-form">
-          <input aria-label="Maya'ya İngilizce mesaj" maxlength="240" autocomplete="off"
+          <input aria-label="English message to Maya" maxlength="240" autocomplete="off"
             placeholder="Type in English…" />
           <button type="button" class="dialogue-mic" aria-label="Record a spoken message">🎤</button>
           <button type="submit">Send</button>
@@ -477,24 +428,24 @@ export class RoomScene extends Phaser.Scene {
     });
 
     this.vocabPanel = this.add.dom(640, 590).createFromHTML(`
-      <section class="dialogue-panel vocab-panel" aria-label="Bir eşyayı isimlendir">
+      <section class="dialogue-panel vocab-panel" aria-label="Name an object">
         <header class="dialogue-header">
           <div><strong>WHAT’S THIS IN ENGLISH?</strong><span>VOCABULARY PRACTICE</span></div>
-          <button class="dialogue-close" type="button" aria-label="Kapat">ESC · close</button>
+          <button class="dialogue-close" type="button" aria-label="Close">ESC · close</button>
         </header>
         <div class="dialogue-scrollable">
           <div class="dialogue-messages" aria-live="polite">
             <p class="dialogue-system">What is this called in English?</p>
           </div>
-          <div class="dialogue-scroll-controls" aria-label="Kelime geçmişini kaydır">
-            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Yukarı kaydır"></button>
+          <div class="dialogue-scroll-controls" aria-label="Scroll vocabulary history">
+            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Scroll up"></button>
             <span class="dialogue-scroll-track" aria-hidden="true"></span>
-            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Aşağı kaydır"></button>
+            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Scroll down"></button>
           </div>
         </div>
         <div class="dialogue-status">Type the word and press Enter</div>
         <form class="dialogue-form">
-          <input aria-label="Eşyanın İngilizce adı" maxlength="60" autocomplete="off"
+          <input aria-label="Object name in English" maxlength="60" autocomplete="off"
             placeholder="e.g. bread" />
           <button type="submit">Submit</button>
         </form>
@@ -552,13 +503,6 @@ export class RoomScene extends Phaser.Scene {
     this.dialogueInput.blur();
   }
 
-  /**
-   * Mikrofon butonu: ilk tikta kayda baslar, ikinci tikta durdurur. Ses
-   * tarayicida MediaRecorder ile toplanir, /api/speech/stt'ye gonderilir
-   * ve donen metin normal bir yazili mesaj gibi submitDialogueTurn()'e
-   * verilir - boylece ayni dil degerlendirme akisi (kabul/duzeltme/odul)
-   * yazarak da soyleyerek de calisir.
-   */
   private async toggleRecording(): Promise<void> {
     if (this.isRecording) {
       this.stopRecording();
@@ -630,13 +574,6 @@ export class RoomScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * NPC'nin metnini /api/speech/tts uzerinden seslendirir ve calar. Bu adim
-   * salt gorsel/isitsel bir eklenti - basarisiz olursa (mikrofon izni, ses
-   * cikisi engelleyen tarayici otomatik-oynatma politikasi, ai servisi
-   * kapali...) sessizce yutulur, cunku metin zaten dialogue panelinde
-   * gorunur durumda.
-   */
   private async speakNpcResponse(text: string, isCoach: boolean): Promise<void> {
     try {
       const profile = isCoach ? ROLEPLAY_TTS_PROFILES.coach : ROLEPLAY_TTS_PROFILES.cafeNpc;
@@ -651,7 +588,6 @@ export class RoomScene extends Phaser.Scene {
       audio.addEventListener("ended", () => URL.revokeObjectURL(url));
       await audio.play();
     } catch {
-      // Sessiz basarisizlik - yukaridaki JSDoc'a bakin.
     }
   }
 
@@ -729,7 +665,6 @@ export class RoomScene extends Phaser.Scene {
     this.dialogueSubmit.textContent = busy ? "…" : "Send";
   }
 
-  // --- Vocabulary ("name it") paneli ---
 
   private openVocabPanel(concept: string): void {
     this.vocabActiveConcept = concept;

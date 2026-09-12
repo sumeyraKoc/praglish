@@ -8,7 +8,7 @@ describe("vectorToDirection8", () => {
     [0, -1, "N"],
     [0, 1, "S"],
     [1, 1, "SE"],
-    [0, 0, "S"], // hareketsizken varsayilan S (kameraya bakar)
+    [0, 0, "S"], // default to S while idle so the character faces the camera
   ];
 
   it.each(cases)("vectorToDirection8(%i, %i) -> %s", (dx, dy, expected) => {
@@ -17,18 +17,18 @@ describe("vectorToDirection8", () => {
 });
 
 describe("resolveDirection", () => {
-  it("mirror4: W yonu, E sprite'ini flip ile kullanir", () => {
+  it("mirror4 uses the flipped E sprite for W", () => {
     const west = resolveDirection(-1, 0, "mirror4");
     expect(west.spriteDirection).toBe("E");
     expect(west.flipX).toBe(true);
   });
 
-  it("mirror4: E yonunde flipX false olmali (orijinal sprite)", () => {
+  it("mirror4 keeps the original E sprite unflipped", () => {
     const east = resolveDirection(1, 0, "mirror4");
     expect(east.flipX).toBe(false);
   });
 
-  it("full8 modunda hic flip olmaz, her yon kendi sprite'ini kullanir", () => {
+  it("full8 uses each direction's own sprite without flipping", () => {
     const nw8 = resolveDirection(-1, -1, "full8");
     expect(nw8.spriteDirection).toBe("NW");
     expect(nw8.flipX).toBe(false);
@@ -36,11 +36,11 @@ describe("resolveDirection", () => {
 });
 
 describe("allDirections", () => {
-  it("toplam 8 yon tanimlidir", () => {
+  it("defines eight directions", () => {
     expect(allDirections()).toHaveLength(8);
   });
 
-  it("her cagrida yeni bir kopya doner (disaridan mutasyona kapali)", () => {
+  it("returns a fresh copy on each call", () => {
     const first = allDirections();
     first.push("N");
     expect(allDirections()).toHaveLength(8);

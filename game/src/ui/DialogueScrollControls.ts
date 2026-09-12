@@ -1,9 +1,5 @@
-// Ok bir kez kullanildiginda kaydirilacak mesafe. Daha kucuk deger daha yavas,
-// daha buyuk deger daha hizli/hissedilir bir hareket verir.
 export const DIALOGUE_SCROLL_STEP_PX = 10;
 
-// Ok basili tutulurken iki kaydirma arasindaki sure. Daha buyuk deger daha
-// yavas, daha kucuk deger daha hizli tekrar eder.
 export const DIALOGUE_SCROLL_INTERVAL_MS = 120;
 
 export function attachDialogueScrollControls(

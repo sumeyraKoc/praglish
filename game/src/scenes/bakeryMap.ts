@@ -55,13 +55,6 @@ export const BAKERY_ASSETS: BakeryAsset[] = [
   { key: "egg-tart", file: "Pixal Art-Asset_Food-Egg_Tart.png" },
 ];
 
-/**
- * Hangi render/texture key'in hangi vocabulary "concept"ine karsilik geldigi.
- * Bircok farkli PNG (farkli yon, farkli varyant) ayni concept'e eslenebilir -
- * concept string'leri api/game_data/vocabulary/bakery.json ile birebir ayni
- * olmali. Burada olmayan key'ler (floor, wall, pillar, light, sale-poster,
- * teddy, footmat, character-*) dekoratif kabul edilir ve etkilesime acilmaz.
- */
 export const ASSET_CONCEPT: Record<string, string> = {
   "cake-shelf": "cake",
   "bread-bucket": "bread",

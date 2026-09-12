@@ -4,17 +4,17 @@ from collections import Counter
 
 from dotenv import load_dotenv
 
-# Linux/Docker'da input() icin ok tuslariyla imlec hareketi, Home/End ve
-# yukari-asagi komut gecmisini etkinlestirir. Modul import edilince Python'in
-# satir okuma kancasini otomatik kurar.
+
+
+
 try:
     import readline  # noqa: F401
 except ImportError:
-    # Readline bulunmayan bir platformda CLI temel input() ile yine calisir.
+
     pass
 
 try:
-    # Repo kokunden `python -m ai.cli` olarak calistirildiginda.
+
     from ai.modules import (
         CorrectionModule,
         CorrectExtractor,
@@ -31,8 +31,8 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "ai":
         raise
-    # Docker image'i ai/ icerigini dogrudan /app'e kopyalar; bu durumda
-    # cli.py'nin kardesi olan `modules` topini kullan.
+
+
     from modules import (
         CorrectionModule,
         CorrectExtractor,
@@ -90,12 +90,12 @@ def create_librarian() -> NPCIdentity:
 
 
 def choose_scenario() -> tuple[NPCIdentity, str, str]:
-    print("Senaryo secin:")
+    print("Choose a scenario:")
     print("  1) Cafe - Mia (barista)")
     print("  2) Library - Lina (librarian)")
 
     while True:
-        choice = input("Secim [1/2]: ").strip().lower()
+        choice = input("Choice [1/2]: ").strip().lower()
         if choice in {"1", "cafe"}:
             return create_barista(), "Cafe", "Hi! I'm Mia. What can I get for you?"
         if choice in {"2", "library"}:
@@ -104,7 +104,7 @@ def choose_scenario() -> tuple[NPCIdentity, str, str]:
                 "Library",
                 "Hi! I'm Lina, the librarian. How can I help you today?",
             )
-        print("Gecersiz secim. 1, 2, cafe veya library yazin.")
+        print("Invalid choice. Enter 1, 2, cafe, or library.")
 
 
 def print_extraction(result: ExtractionResult) -> None:
@@ -144,11 +144,11 @@ def print_extraction(result: ExtractionResult) -> None:
 
 
 def run() -> None:
-    # Windows CMD/PowerShell -> `docker compose exec` hattinda UTF-8 olmayan
-    # tekil baytlar Python'in varsayilan `surrogateescape` davranisiyla
-    # \udcxx karakterlerine donusebilir. Pydantic bunlari JSON/UTF-8'e cevirirken
-    # hata verir. Gecersiz girisi replacement character'a cevirerek CLI'nin
-    # ikinci turda cokmesini engelle; normal UTF-8/ASCII metin aynen korunur.
+
+
+
+
+
     if hasattr(sys.stdin, "reconfigure"):
         sys.stdin.reconfigure(errors="replace")
 
@@ -180,7 +180,7 @@ def run() -> None:
     )
     npc = NpcModule(identity=identity, generator=generator)
 
-    print(f"{scenario_name} role-play başladı. Çıkmak için 'quit' yazın.")
+    print(f"{scenario_name} role-play started. Type 'quit' to exit.")
     print(f"NPC: {opening_line}")
 
     while True:

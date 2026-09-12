@@ -3,21 +3,6 @@ import { GridPosition, gridToScreen, IsoConfig } from "../engine/IsometricMath";
 import { calculateDepth } from "../engine/DepthSort";
 import { Direction8, resolveDirection } from "./DirectionResolver";
 
-/**
- * IsoAvatar: izometrik odada yurutulebilen, 8 yonlu karakter.
- *
- * Iki asset modunu destekler:
- *  - "full8": spritesheet'te N/NE/E/SE/S/SW/W/NW'nin hepsi ayri ayri var
- *             (orn. AxulArt "Small 8-direction Characters" paketi)
- *  - "mirror4": spritesheet'te sadece N/E/S/W var, capraz yonler + W yatay
- *             flip ile turetilir (sanat maliyetini yariya indirir)
- *
- * Beklenen animasyon key formati: `${textureKey}_walk_${direction}` ve
- * `${textureKey}_idle_${direction}` (orn. "hero_walk_E", "hero_idle_S").
- * Bu isimlendirmeyi kendi yukledigin spritesheet'e gore Phaser
- * anims.create() ile siz olusturursunuz - bu sinif sadece hangi
- * animasyonun ne zaman oynatilacagina karar verir.
- */
 export interface IsoAvatarConfig {
   textureKey: string;
   assetMode: "full8" | "mirror4";
@@ -47,7 +32,6 @@ export class IsoAvatar {
     this.playIdle();
   }
 
-  /** Pathfinder'dan gelen grid dizisini takip ederek yurumeye baslar. */
   public followPath(path: GridPosition[]): void {
     this.activeTween?.stop();
     this.activeTween = null;
@@ -86,8 +70,6 @@ export class IsoAvatar {
       duration: durationMs,
       ease: "Linear",
       onUpdate: (tween: Phaser.Tweens.Tween) => {
-        // Yuruyus sirasinda depth'i de guncelle ki karakter yururken
-        // dogru objelerin onunden/arkasindan gecsin.
         const progressGrid: GridPosition = {
           x: this.grid.x + (next.x - this.grid.x) * tween.progress,
           y: this.grid.y + (next.y - this.grid.y) * tween.progress,

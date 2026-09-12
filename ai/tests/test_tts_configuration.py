@@ -5,8 +5,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-# ai/main.py Docker'da /app/main.py olarak top-level calisir ve `modules`
-# import eder. Testi repo kokunden calistirirken ayni import seklini koru.
+
+
 AI_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AI_DIR))
 import main as ai_main  # noqa: E402

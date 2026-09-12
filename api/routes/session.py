@@ -13,7 +13,7 @@ router = APIRouter()
 class SessionStartRequest(BaseModel):
     username: str
     password: str
-    location: str  # orn: "bakery" (aktif odalar: bakery, library)
+    location: str
     npc_role: str  # orn: "baker"
 
 
@@ -22,11 +22,11 @@ def start_session(request: SessionStartRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == request.username).first()
 
     if user:
-        # Kullanici var - sifreyi dogrula
+
         if not verify_password(request.password, user.password_hash):
             raise HTTPException(status_code=401, detail="Incorrect password")
     else:
-        # Kullanici yok - ayni endpoint kayit gorevi de goruyor (hackathon MVP icin)
+
         user = User(username=request.username, password_hash=hash_password(request.password))
         db.add(user)
         db.commit()

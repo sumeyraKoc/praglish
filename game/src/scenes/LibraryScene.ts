@@ -22,18 +22,7 @@ const FURNITURE_SCALE = ASSET_SCALE * 1.22;
 const MAP_OFFSET = { x: 25, y: 14 };
 const ROOM_SIZE = { width: 12, height: 16 };
 const NAV_SUBDIVISIONS = 4;
-// Yanim yana duran mobilyalarin collider'lari hafifce ust uste gelir;
-// boylece karakter masa ve raf parcalarinin arasindaki yapay bosluga giremez.
 const FURNITURE_COLLISION_RADIUS = 0.52;
-// originX/originY, Sample.tmj'deki gercek tile araligina (Floor/Walls/mobilyalar
-// katmanlari MAP_OFFSET sonrasi x: 0..11, y: 0..15) gore hesaplandi: eskiden
-// (650, 100) idi ve bu, odayi 1280x720 canvas'ta soldan (~64px) ve yukaridan
-// kirpiliyordu - en arkadaki duvar sirasi (grid 0,0) ekranin en ustunden
-// tasip "PRAGLISH LIBRARY" basligiyla cakisiyor, oda da canvas merkezine gore
-// sola kayik duruyordu (bu yuzden oyun ici goruntu, referans/onizleme
-// gorsellerindeki gibi kareyi doldurmuyordu). Yeni degerler odayi yatayda tam
-// ortalar ve en ust duvarin canvas'in ustunden tasmasini onler; alttaki bosluk
-// bilerek koruniyor - konusma paneli (640, 590) acildiginda o alana oturuyor.
 const ISO_CONFIG: IsoConfig = {
   tileWidth: TILE_SIZE,
   tileHeight: TILE_SIZE / 2,
@@ -75,7 +64,6 @@ export class LibraryScene extends Phaser.Scene {
   private wallTiles = new Set<string>();
   private furnitureTiles = new Set<string>();
 
-  // Vocabulary ("name it") etkilesim durumu
   private interactables: Interactable[] = [];
   private interactableTileKeys = new Set<string>();
   private earnedWords = new Map<string, Set<string>>();
@@ -133,9 +121,6 @@ export class LibraryScene extends Phaser.Scene {
       }
       this.handleClickToWalk(pointer.worldX, pointer.worldY);
     });
-    // isTextEntryEvent guard'i: bir DOM input'u (orn. dublaj karakter secim
-    // ekranindaki script <select>'i ya da diyalog/kelime input'lari) odaktayken
-    // yazilan harflerin bu oyun kisayollarini tetiklemesini engeller.
     this.input.keyboard?.on("keydown-E", (event: KeyboardEvent) => {
       if (!isTextEntryEvent(event)) this.handleInteractKey();
     });
@@ -207,7 +192,7 @@ export class LibraryScene extends Phaser.Scene {
       ["Floor", -1000],
       ["Second floor", -900],
       ["Walls", 0],
-      ["mobilyalar", 10],
+      ["Furniture", 10],
     ]);
 
     for (const layer of map.layers) {
@@ -233,7 +218,7 @@ export class LibraryScene extends Phaser.Scene {
       const tileKey = `${gridX},${gridY}`;
       if (layer.name === "Floor") this.walkableTiles.add(tileKey);
       if (layer.name === "Walls") this.wallTiles.add(tileKey);
-      if (layer.name === "mobilyalar") this.furnitureTiles.add(tileKey);
+      if (layer.name === "Furniture") this.furnitureTiles.add(tileKey);
 
       const screen = gridToScreen({ x: gridX, y: gridY, z: 0 }, ISO_CONFIG);
       const sprite = this.add.image(
@@ -242,7 +227,7 @@ export class LibraryScene extends Phaser.Scene {
         asset.key,
       );
       sprite.setOrigin(0.5, 1).setScale(
-        layer.name === "mobilyalar" ? FURNITURE_SCALE : ASSET_SCALE,
+        layer.name === "Furniture" ? FURNITURE_SCALE : ASSET_SCALE,
       );
       sprite.setFlipX((rawGid & 0x80000000) !== 0);
       sprite.setFlipY((rawGid & 0x40000000) !== 0);
@@ -256,12 +241,6 @@ export class LibraryScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * asset.key -> vocabulary concept eslemesi varsa (bkz. libraryMap.ts ASSET_CONCEPT),
-   * bu tile'i "eşyanın yanına git, adını söyle" etkilesimine acik hale getirir.
-   * Ayni koordinata birden fazla katmandan tile dusebildigi icin tekrar eklemeyi
-   * interactableTileKeys ile engelliyoruz.
-   */
   private registerInteractable(assetKey: string, gridX: number, gridY: number): void {
     const concept = ASSET_CONCEPT[assetKey];
     if (!concept) return;
@@ -290,20 +269,9 @@ export class LibraryScene extends Phaser.Scene {
       this.applyVocabularyProgress(progress);
       this.warnOnUnknownConcepts(progress);
     } catch {
-      // Sessizce yut - ilerleme cache'i yalnizca UX rozeti icin, oyunu bloke etmemeli.
     }
   }
 
-  /**
-   * Gelistirme zamani tutarlilik kontrolu: ASSET_CONCEPT (libraryMap.ts) bir concept
-   * tanimliyor ama backend'in api/game_data/vocabulary/library.json dosyasinda o
-   * concept yoksa (yazim hatasi, unutulmus ekleme...), oyuncu o esyanin yaninda
-   * hicbir zaman coin kazanamaz - tek belirti backend'den gelen sessiz bir
-   * "Concept not found" hatasidir. Bunu erken, konsola acikca yazdirarak
-   * yakaliyoruz ki iki taraf birbirinden kopunca demo gunune kadar fark edilmeden
-   * kalmasin. Kelime/es anlamli listeleri burada tutulmuyor - tek paylasilan sey
-   * concept id string'leri, onlarin dogrulugunu burada kontrol ediyoruz.
-   */
   private warnOnUnknownConcepts(progress: VocabularyProgressEntry[]): void {
     const knownConcepts = new Set(progress.map((entry) => entry.concept));
     const usedConcepts = new Set(this.interactables.map((item) => item.concept));
@@ -311,8 +279,8 @@ export class LibraryScene extends Phaser.Scene {
     if (unknown.length > 0) {
       console.warn(
         "[Praglish] libraryMap.ts > ASSET_CONCEPT bu concept'leri kullaniyor ama " +
-          `api/game_data/vocabulary/library.json'da tanimli degiller: ${unknown.join(", ")}. ` +
-          "Oyuncu bu esyalar icin coin kazanamayacak - iki dosyayi senkronlayin.",
+          `They are not defined in api/game_data/vocabulary/library.json: ${unknown.join(", ")}. ` +
+          "Players cannot earn coins for these objects until the two files are synchronized.",
       );
     }
   }
@@ -348,7 +316,7 @@ export class LibraryScene extends Phaser.Scene {
       fontSize: "22px",
       color: "#f2c879",
     }).setScrollFactor(0).setDepth(100000);
-    this.add.text(24, 54, "Zemine tıkla · E: Etkileşim · B: Bakery · P: Progress · M: Menu", {
+    this.add.text(24, 54, "Click the floor · E: Interact · B: Bakery · P: Progress · M: Menu", {
       fontFamily: "Arial, sans-serif",
       fontSize: "15px",
       color: "#e1d9cb",
@@ -393,24 +361,24 @@ export class LibraryScene extends Phaser.Scene {
       });
 
     this.dialogue = this.add.dom(640, 590).createFromHTML(`
-      <section class="dialogue-panel" aria-label="Lina ile konuşma">
+      <section class="dialogue-panel" aria-label="Conversation with Lina">
         <header class="dialogue-header">
           <div><strong>LINA</strong><span>LIBRARIAN · AI</span></div>
-          <button class="dialogue-close" type="button" aria-label="Konuşmayı kapat">ESC · close</button>
+          <button class="dialogue-close" type="button" aria-label="Close conversation">ESC · close</button>
         </header>
         <div class="dialogue-scrollable">
           <div class="dialogue-messages" aria-live="polite">
             <p class="dialogue-system">Ask Lina for a book in English.</p>
           </div>
-          <div class="dialogue-scroll-controls" aria-label="Konuşma geçmişini kaydır">
-            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Yukarı kaydır"></button>
+          <div class="dialogue-scroll-controls" aria-label="Scroll conversation history">
+            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Scroll up"></button>
             <span class="dialogue-scroll-track" aria-hidden="true"></span>
-            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Aşağı kaydır"></button>
+            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Scroll down"></button>
           </div>
         </div>
         <div class="dialogue-status">Not connected</div>
         <form class="dialogue-form">
-          <input aria-label="Lina'ya İngilizce mesaj" maxlength="240" autocomplete="off"
+          <input aria-label="English message to Lina" maxlength="240" autocomplete="off"
             placeholder="Type in English…" />
           <button type="button" class="dialogue-mic" aria-label="Record a spoken message">🎤</button>
           <button type="submit">Send</button>
@@ -440,24 +408,24 @@ export class LibraryScene extends Phaser.Scene {
     });
 
     this.vocabPanel = this.add.dom(640, 590).createFromHTML(`
-      <section class="dialogue-panel vocab-panel" aria-label="Bir eşyayı isimlendir">
+      <section class="dialogue-panel vocab-panel" aria-label="Name an object">
         <header class="dialogue-header">
           <div><strong>WHAT’S THIS IN ENGLISH?</strong><span>VOCABULARY PRACTICE</span></div>
-          <button class="dialogue-close" type="button" aria-label="Kapat">ESC · close</button>
+          <button class="dialogue-close" type="button" aria-label="Close">ESC · close</button>
         </header>
         <div class="dialogue-scrollable">
           <div class="dialogue-messages" aria-live="polite">
             <p class="dialogue-system">What is this called in English?</p>
           </div>
-          <div class="dialogue-scroll-controls" aria-label="Kelime geçmişini kaydır">
-            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Yukarı kaydır"></button>
+          <div class="dialogue-scroll-controls" aria-label="Scroll vocabulary history">
+            <button class="dialogue-scroll-button up" type="button" data-scroll-direction="up" aria-label="Scroll up"></button>
             <span class="dialogue-scroll-track" aria-hidden="true"></span>
-            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Aşağı kaydır"></button>
+            <button class="dialogue-scroll-button down" type="button" data-scroll-direction="down" aria-label="Scroll down"></button>
           </div>
         </div>
         <div class="dialogue-status">Type the word and press Enter</div>
         <form class="dialogue-form">
-          <input aria-label="Eşyanın İngilizce adı" maxlength="60" autocomplete="off"
+          <input aria-label="Object name in English" maxlength="60" autocomplete="off"
             placeholder="e.g. book" />
           <button type="submit">Submit</button>
         </form>
@@ -515,13 +483,6 @@ export class LibraryScene extends Phaser.Scene {
     this.dialogueInput.blur();
   }
 
-  /**
-   * Mikrofon butonu: ilk tikta kayda baslar, ikinci tikta durdurur. Ses
-   * tarayicida MediaRecorder ile toplanir, /api/speech/stt'ye gonderilir
-   * ve donen metin normal bir yazili mesaj gibi submitDialogueTurn()'e
-   * verilir - boylece ayni dil degerlendirme akisi (kabul/duzeltme/odul)
-   * yazarak da soyleyerek de calisir.
-   */
   private async toggleRecording(): Promise<void> {
     if (this.isRecording) {
       this.stopRecording();
@@ -593,13 +554,6 @@ export class LibraryScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * NPC'nin metnini /api/speech/tts uzerinden seslendirir ve calar. Bu adim
-   * salt gorsel/isitsel bir eklenti - basarisiz olursa (mikrofon izni, ses
-   * cikisi engelleyen tarayici otomatik-oynatma politikasi, ai servisi
-   * kapali...) sessizce yutulur, cunku metin zaten dialogue panelinde
-   * gorunur durumda.
-   */
   private async speakNpcResponse(text: string, isCoach: boolean): Promise<void> {
     try {
       const profile = isCoach ? ROLEPLAY_TTS_PROFILES.coach : ROLEPLAY_TTS_PROFILES.librarian;
@@ -614,7 +568,6 @@ export class LibraryScene extends Phaser.Scene {
       audio.addEventListener("ended", () => URL.revokeObjectURL(url));
       await audio.play();
     } catch {
-      // Sessiz basarisizlik - yukaridaki JSDoc'a bakin.
     }
   }
 
@@ -692,7 +645,6 @@ export class LibraryScene extends Phaser.Scene {
     this.dialogueSubmit.textContent = busy ? "…" : "Send";
   }
 
-  // --- Vocabulary ("name it") paneli ---
 
   private openVocabPanel(concept: string): void {
     this.vocabActiveConcept = concept;
@@ -832,8 +784,6 @@ export class LibraryScene extends Phaser.Scene {
     const nearestTile = `${Math.round(worldX)},${Math.round(worldY)}`;
     if (!this.walkableTiles.has(nearestTile) || this.wallTiles.has(nearestTile)) return false;
 
-    // Mobilyalar gorsel olarak buyutuldugu icin merkezlerinin etrafinda
-    // karakter olcegine uygun dar bir guvenlik payi birak.
     for (const tile of this.furnitureTiles) {
       const [xText, yText] = tile.split(",");
       if (xText === undefined || yText === undefined) continue;

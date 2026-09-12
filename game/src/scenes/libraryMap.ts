@@ -23,7 +23,6 @@ export interface LibraryMapData {
   layers: Array<LibraryTileLayer | LibraryObjectLayer>;
 }
 
-// Sample.tmj icindeki iki harici tileset'in yalnizca kullanilan GID'leri.
 export const LIBRARY_ASSETS: LibraryAsset[] = [
   { gid: 16, key: "library-floor", file: "floor_E.png" },
   { gid: 50, key: "library-bookcase-glass", file: "bookcaseGlass_S.png" },
@@ -51,14 +50,6 @@ export const LIBRARY_ASSETS: LibraryAsset[] = [
   { gid: 164, key: "library-wall-door", file: "wallDoorway_E.png" },
 ];
 
-/**
- * Hangi render/texture key'in hangi vocabulary "concept"ine karsilik geldigi.
- * Bircok farkli PNG (orn. candleStandDouble_E vs _N, ya da bes farkli bookcase
- * varyanti) ayni concept'e eslenebilir - concept string'leri
- * api/game_data/vocabulary/library.json ile birebir ayni olmali. Burada
- * olmayan key'ler (floor, wall-door, empty book stand) dekoratif kabul edilir
- * ve etkilesime acilmaz.
- */
 export const ASSET_CONCEPT: Record<string, string> = {
   "library-bookcase-glass": "bookcase",
   "library-bookcase-half": "bookcase",

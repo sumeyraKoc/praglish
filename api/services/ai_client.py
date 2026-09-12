@@ -24,10 +24,10 @@ AI_EXTRACTION_TIMEOUT_SECONDS = float(
 )
 AI_SPEECH_TIMEOUT_SECONDS = float(os.getenv("AI_SPEECH_TIMEOUT_SECONDS", "45"))
 
-# USE_MOCK_AI=true iken gercek Gemini'ye gitmeden sabit bir cevap donuyoruz.
-# Oyunda gercekten var olan (asset+scene'i olan) odalar icin dogru bir mock
-# tanimli olmali - aksi halde her lokasyon icin ayni "kahve" cevabi donerdi,
-# bu da bakery/library testlerini yanlis yonlendirirdi.
+
+
+
+
 MOCK_RESPONSES: dict[str, EvaluateResponse] = {
     "bakery": EvaluateResponse(
         accepted=False,
@@ -50,24 +50,18 @@ MOCK_RESPONSES: dict[str, EvaluateResponse] = {
 
 
 async def evaluate_and_respond(payload: EvaluateRequest) -> EvaluateResponse:
-    """
-    USE_MOCK_AI=true iken Sumeyra'nin ai servisini beklemeden
-    Zehra sabit/sahte bir cevapla api tarafini gelistirebilir.
-    Sumeyra ai servisini gercek Gemini entegrasyonuyla doldurdukca
-    USE_MOCK_AI=false yapip gercek servise gecilir.
-    """
     if USE_MOCK_AI:
         template = MOCK_RESPONSES.get(payload.location)
         if template is None:
-            # Henuz oyunda karsiligi olmayan bir lokasyon (orn. cafe/hospital/school -
-            # bkz. api/game_data/scenarios, "status": "planned_no_assets_yet").
-            # Yanlis/alakasiz bir mock cevap donmek yerine bunu acikca soyluyoruz.
+
+
+
             return EvaluateResponse(
                 accepted=False,
                 correction=None,
                 npc_response=(
-                    f"[mock] '{payload.location}' icin henuz bir mock cevap "
-                    "tanimlanmadi - api/services/ai_client.py > MOCK_RESPONSES'a ekleyin."
+                    f"[mock] No response is defined for '{payload.location}' yet. "
+                    "Add one to MOCK_RESPONSES in api/services/ai_client.py."
                 ),
                 response_speaker="coach",
                 updated_scenario_state=payload.scenario_state,
@@ -87,7 +81,6 @@ async def extract_utterance(
     payload: ExtractionRequest,
     outcome: Literal["correct", "incorrect"],
 ) -> ExtractionResult | None:
-    """Return None in mock mode so fake evaluations do not pollute analytics."""
 
     if USE_MOCK_AI:
         return None
@@ -111,14 +104,6 @@ async def transcribe_audio(
     content_type: str,
     language_code: str | None = None,
 ) -> STTResponse:
-    """
-    Oyuncunun mikrofon kaydini ai servisindeki gercek Gemini STT saglayicisina
-    iletir. Diger iki fonksiyondan farkli olarak burada USE_MOCK_AI kisayolu
-    YOK: "sahte bir transkript" konusma pratiginde hicbir sey ogretmez, bu
-    yuzden ses -> metin donusumu her zaman gercek ai servisine gider (ai
-    container ayakta degilse asagidaki httpx hatasi routes/speech.py'de
-    503'e cevriliyor).
-    """
 
     async with httpx.AsyncClient(timeout=AI_SPEECH_TIMEOUT_SECONDS) as client:
         files = {"audio": ("recording", audio_bytes, content_type)}
@@ -131,12 +116,6 @@ async def transcribe_audio(
 
 
 async def synthesize_speech(payload: TTSRequest) -> tuple[bytes, dict[str, str]]:
-    """
-    NPC'nin metin cevabini sesli soylemesi icin ai servisindeki gercek Gemini
-    TTS saglayicisina proxy yapar. Ham WAV bayt dizisini ve birkac bilgi
-    header'ini (X-Speech-Model/Voice/Latency-Ms) oldugu gibi geri donduruyoruz
-    ki api katmani bunlari degistirmeden oyuna aktarabilsin.
-    """
 
     async with httpx.AsyncClient(timeout=AI_SPEECH_TIMEOUT_SECONDS) as client:
         response = await client.post(f"{AI_SERVICE_URL}/tts", json=payload.model_dump())

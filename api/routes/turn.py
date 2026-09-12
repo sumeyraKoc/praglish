@@ -33,7 +33,6 @@ async def _record_extraction_background(
     dialogue_id: int | None,
     utterance: str,
 ) -> None:
-    """Run optional learning analytics without delaying the gameplay response."""
 
     db = SessionLocal()
     try:
@@ -49,7 +48,7 @@ async def _record_extraction_background(
             result=extraction_result,
         )
         db.commit()
-    except Exception:  # analytics must fail open during gameplay
+    except Exception:
         db.rollback()
         logger.exception("Language extraction failed for session %s", session_id)
     finally:
@@ -73,9 +72,9 @@ async def process_turn(
     if not session.is_active:
         raise HTTPException(status_code=400, detail="Session is closed")
 
-    # Bir onceki kullanici turu reddedildiyse sistemin son cevabi koctur.
-    # Koctan hemen sonra girilen cumle genellikle onerilen duzeltmenin tekraridir;
-    # oyuncunun bagimsiz dil seviyesini sisirmemesi icin extractor'a verilmez.
+
+
+
     previous_turn = (
         db.query(LearningTurnEvent)
         .filter(LearningTurnEvent.session_id == session.id)
@@ -86,7 +85,7 @@ async def process_turn(
         previous_turn.outcome if previous_turn is not None else None
     )
 
-    # Tum gercek NPC mesajlarini ve yalnizca kabul edilmis kullanici mesajlarini al.
+
     dialogues = (
         db.query(Dialogue)
         .filter(Dialogue.session_id == session.id)
@@ -103,14 +102,14 @@ async def process_turn(
         user_text=request.user_text,
     )
 
-    # ai_client.py uzerinden gidiyoruz ki USE_MOCK_AI korumasi calismaya devam etsin
-    # (ai container ayakta olmasa bile bu route test edilebilsin)
+
+
     result = await evaluate_and_respond(payload)
 
-    # NPC'den sonraki bagimsiz kullanici cumlesi kabul edilmisse CorrectExtractor,
-    # reddedilmisse IncorrectExtractor kullanilir. Koctan sonraki yanit iki
-    # extractor'a da verilmez. Analytics hatalari oyun turunu bloke etmez.
-    # Odul motoru - result Pydantic nesnesi, .get() degil dogrudan attribute erisimi
+
+
+
+
     reward_info = RewardEngine.process_turn_reward(
         db=db, user_id=session.user_id, is_accepted=result.accepted
     )
@@ -138,9 +137,9 @@ async def process_turn(
             )
         )
 
-    # Trend/seri istatistikleri icin her turu metin saklamadan kaydet. Bu
-    # basit INSERT extractor'dan bagimsizdir; extractor arka planda hata verse
-    # bile dashboard'un dogru/yanlis tur sayisi eksilmez.
+
+
+
     db.add(
         LearningTurnEvent(
             user_id=session.user_id,
@@ -153,8 +152,8 @@ async def process_turn(
 
     session.scenario_state = result.updated_scenario_state
 
-    # Senaryo tamamlandi mi kontrol et (result bir Pydantic nesnesi, .get() degil
-    # dogrudan attribute erisimi kullaniyoruz)
+
+
     is_completed, completion_rewards = ScenarioEngine.is_scenario_completed(
         session.location, session.scenario_state
     )

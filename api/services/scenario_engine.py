@@ -25,10 +25,10 @@ class ScenarioEngine:
         scenario_data = ScenarioEngine.load_scenario(scenario_id)
         required_fields = scenario_data.get("required_fields", [])
 
-        # ONEMLI DUZELTME: required_fields bos ise (orn. henuz JSON'u yazilmamis
-        # bir oda) senaryoyu "tamamlandi" saymiyoruz. Aksi halde JSON'u olmayan
-        # her oda ilk turn'de aninda "tamamlanmis" sayilir ve session hemen
-        # kilitlenir - kullanici hicbir sey yapmadan.
+
+
+
+
         if not required_fields:
             return False, {}
 

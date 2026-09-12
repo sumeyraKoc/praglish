@@ -40,7 +40,7 @@ export class DashboardScene extends Phaser.Scene {
       this.dashboard = await this.api.getDashboard();
       this.renderPage();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : "Dashboard yuklenemedi.";
+      const message = error instanceof Error ? error.message : "Dashboard could not be loaded.";
       const content = this.panel?.node.querySelector("[data-dashboard-content]");
       if (content) {
         content.innerHTML = `<div class="paper-empty">${this.escapeHtml(message)}</div>`;
@@ -104,7 +104,7 @@ export class DashboardScene extends Phaser.Scene {
     }).join("");
     const locations = data.locations.length
       ? data.locations.map((item) => `<li><span>${this.escapeHtml(item.name)}</span><b>${item.turn_count}</b></li>`).join("")
-      : '<li class="muted">Henuz oda kaydi yok.</li>';
+      : '<li class="muted">No room activity has been recorded yet.</li>';
 
     return this.bookPages(
       "PROFILE",
@@ -149,9 +149,9 @@ export class DashboardScene extends Phaser.Scene {
     const practice = data.idioms.filter((idiom) => idiom.incorrect_count > 0);
     return this.bookPages(
       "BADGE COLLECTION",
-      this.idiomCards(discovered, "Henuz dogru kullanilmis bir idiom yok."),
+      this.idiomCards(discovered, "No idioms have been used correctly yet."),
       "TRAINING LIST",
-      this.idiomCards(practice, "Henuz idiom hatasi bulunmadi."),
+      this.idiomCards(practice, "No idiom mistakes have been found yet."),
     );
   }
 

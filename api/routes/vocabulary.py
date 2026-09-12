@@ -40,7 +40,7 @@ def submit_word(request: VocabularySubmitRequest, db: Session = Depends(get_db))
 
     matched_entry = VocabularyEngine.match_word(concept_data, request.word)
     if not matched_entry:
-        # Kelime bu konseptin kabul edilen listesinde yok - odul yok
+
         return {
             "matched": False,
             "already_earned": False,
@@ -64,7 +64,7 @@ def submit_word(request: VocabularySubmitRequest, db: Session = Depends(get_db))
     words_total = len(concept_data["words"])
 
     if already:
-        # Bu kelime icin daha once zaten odul verilmis - tekrar verme
+
         earned_count = _count_earned(db, request.user_id, request.location, request.concept)
         return {
             "matched": True,

@@ -70,26 +70,14 @@ def health():
     try:
         ai_provider = _active_ai_provider()
     except RuntimeError:
-        # Keep /health itself green even with no key configured yet - it's a
-        # liveness probe, not a config check. The concrete error still
-        # surfaces the first time an actual AI endpoint is called below.
+
+
+
         ai_provider = "unconfigured"
     return {"status": "ok", "service": "ai", "ai_provider": ai_provider}
 
 
 def _active_ai_provider() -> str:
-    """Pick which AI backend to use, based on which API key is configured.
-
-    Gemini and Groq are wired as interchangeable implementations of the same
-    Protocols (see ai/modules/*.py), so the whole service can run on either
-    one without any other code changing. GEMINI_API_KEY wins when both are
-    set - the historical default behaviour of this service - so an existing
-    .env with only a Gemini key keeps working exactly as before. Setting
-    GROQ_API_KEY instead (e.g. because Gemini is down or rate-limited) is
-    enough to move every AI call over to Groq. This selection happens once
-    per process (the results are cached via @lru_cache below); switching
-    providers means changing .env and restarting the ai container.
-    """
 
     if _env("GEMINI_API_KEY"):
         return "gemini"
@@ -101,15 +89,6 @@ def _active_ai_provider() -> str:
 
 
 def _env(key: str, default: str = "") -> str:
-    """os.getenv, but treats an EMPTY string the same as unset.
-
-    docker-compose's `${VAR:-default}` substitution only kicks in when VAR is
-    unset on the host - if .env sets `SOME_KEY=` (present but blank, e.g. an
-    optional override nobody filled in) or the container is run without
-    Compose at all, `os.getenv("SOME_KEY", default)` would return "" instead
-    of `default`, silently passing an empty model name straight to Gemini/Groq.
-    Using this helper for every model/config lookup avoids that trap.
-    """
 
     return os.getenv(key, "").strip() or default
 
@@ -142,13 +121,13 @@ def get_incorrect_extraction_provider() -> ExtractionProvider:
 
 @lru_cache
 def get_language_evaluator() -> LanguageEvaluator:
-    # Evaluator ve correction (asagida) her turda oyuncunun BEKLEDIGI kritik
-    # yolda calisiyor (bkz. evaluate_and_respond) - extractor'lar gibi arka
-    # planda degil. Bu yuzden varsayilan olarak Groq'ta "instant" (kucuk,
-    # dusuk gecikmeli) modeli kullaniyoruz; NPC diyalogu (get_npc_generator)
-    # karakter kalitesi icin buyuk modelde kaliyor. Gemini tarafinda hangi
-    # modelin daha hizli oldugunu varsaymiyoruz - GEMINI_EVALUATOR_MODEL
-    # ayarlanmadigi surece GEMINI_MODEL ile ayni davranis (once oldugu gibi).
+
+
+
+
+
+
+
     estimator: PlausibilityEstimator
     if _active_ai_provider() == "gemini":
         estimator = GeminiPlausibilityEstimator(
@@ -214,9 +193,9 @@ def get_stt_provider() -> SpeechToTextProvider:
 
 @lru_cache
 def get_tts_provider() -> TextToSpeechProvider:
-    # TTS icin ayri bir Gemini projesi/anahtari tanimlanabilir. Bu anahtar
-    # yalnizca ses sentezinde kullanilir; evaluator, correction, NPC ve STT
-    # mevcut GEMINI_API_KEY/GROQ_API_KEY secimini kullanmaya devam eder.
+
+
+
     dedicated_gemini_tts_key = _env("GEMINI_TTS_API_KEY")
     if dedicated_gemini_tts_key:
         return GeminiTextToSpeechProvider(

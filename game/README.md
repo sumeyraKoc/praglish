@@ -1,62 +1,73 @@
-# Praglish Game MVP
+# Praglish Game Client
 
-Phaser tabanlı izometrik Praglish oyun istemcisi. Fırın ve kütüphane Tiled
-haritalarını ve assetlerini kullanır.
+The Praglish game client is an isometric Phaser application for practicing
+English through interactive role-play and scene dubbing. It uses Tiled maps and
+game assets for the bakery and library environments.
 
-Ana oyuncunun dört yönlü idle/yürüme sprite'ı, CC0 bir sheet düzeni referans
-alınarak proje için üretilmiştir. Kaynak bilgisi
-`public/assets/characters/SOURCE.md` dosyasında tutulur.
+The player character includes four-direction idle and walking animations. The
+sprite sheet was produced for this project using a CC0 sheet layout as a
+reference; attribution details are available in
+`public/assets/characters/SOURCE.md`.
 
-## Çalıştırma
+## Run with Docker
 
-Docker ile çalıştırıldığında bilgisayarda Node.js kurulumu gerekmez:
+Docker is the recommended way to run the complete application. It does not
+require a local Node.js installation:
 
 ```bash
-docker compose up --build -d
+docker compose up --build
 ```
 
-Node.js 20+ yalnızca oyunu Docker dışında geliştirmek isteyenler için gereklidir:
+Open `http://localhost:5173` after the services are ready.
+
+## Run the client locally
+
+Node.js 20 or newer is required only when developing the client outside Docker:
 
 ```bash
-cd game
 npm install
 npm run dev
 ```
 
-Ardından `http://localhost:5173` adresini açın.
+The client expects the API at `http://localhost:8000` by default. To use a
+different endpoint, define `window.PRAGLISH_API_BASE_URL` before the game script
+loads.
 
-API varsayılan olarak `http://localhost:8000` adresinde aranır. Farklı bir
-adres gerekiyorsa oyun scriptinden önce `window.PRAGLISH_API_BASE_URL`
-değerini tanımlayın.
+For interface-only development without Docker or Python, run the mock API in a
+separate terminal:
 
-Docker/Python olmadan yalnızca arayüz akışını geliştirmek için ayrı bir
-terminalde `npm run dev:mock-api` kullanılabilir. Bu geliştirme sunucusu gerçek
-AI değildir; gerçek FastAPI ile aynı session/turn/vocabulary/speech
-sözleşmesini taklit eder (mikrofon → metin dönüşümü sabit bir örnek cümle
-döner, NPC sesi ise geçerli ama sessiz bir WAV'dır — gerçek Gemini STT/TTS
-için `ai` container'ının `GEMINI_API_KEY` ile ayakta olması gerekir).
+```bash
+npm run dev:mock-api
+```
 
-## Kontroller
+The mock server follows the same session, turn, vocabulary, and speech contracts
+as the FastAPI service, but it is not real AI. Speech recognition returns a fixed
+sample sentence and speech synthesis returns a valid silent WAV. Run the AI
+container with a configured provider key for real STT and TTS.
 
-- Zemine tıkla: oyuncuyu A* pathfinding ile yürütür.
-- `E`: NPC yakındayken konuşmayı açar, bir eşyanın yakınındayken adını
-  söyleme panelini açar.
-- Konuşma panelindeki 🎤 butonu: mikrofonla kayda başlar/durdurur, kayıt
-  `/api/speech/stt` ile metne çevrilip normal bir mesaj gibi gönderilir; NPC
-  cevabı `/api/speech/tts` üzerinden sesli çalınır.
-- `Esc`: konuşma / kelime panelini kapatır.
-- `B`: kütüphaneden fırına geçer.
-- `L`: fırından kütüphaneye geçer.
+## Controls
 
-## Doğrulama
+- Click the floor to move with A* pathfinding.
+- Press `E` near an NPC to start a conversation, or near an object to open the
+  vocabulary panel.
+- Use the microphone button in a conversation to record speech. The client sends
+  the recording to `/api/speech/stt` and plays the NPC response from
+  `/api/speech/tts`.
+- Press `Esc` to close a conversation or vocabulary panel.
+- Press `B` to move from the library to the bakery.
+- Press `L` to move from the bakery to the library.
+- Press `P` to open the progress dashboard.
+- Press `M` to return to the mode menu.
+
+## Validation
 
 ```bash
 npm run typecheck
-npm test
+npm run test
 npm run build
 ```
 
-Maya ve Lina konuşma panelleri `api` servisindeki session/turn akışına bağlıdır;
-AI cevapları, düzeltmeler ve ödüller aynı panelde gösterilir. Mikrofonla konuşma
-tarayıcının `getUserMedia`/`MediaRecorder` API'lerini kullanır ve yalnızca
-"secure context"te (örn. `http://localhost` veya HTTPS) çalışır.
+The Maya and Lina dialogue panels use the API session and turn flow. AI replies,
+corrections, and rewards appear in the same panel. Microphone input relies on the
+browser `getUserMedia` and `MediaRecorder` APIs and works only in a secure context,
+such as `http://localhost` or HTTPS.

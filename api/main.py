@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from core.database import Base, engine
-from models import models  # noqa: F401 - Base.metadata'ya tablolari kaydettirmek icin import sart
+from models import models
 from routes import analytics, dub, leaderboard, session, speech, turn, user, vocabulary
 
 logger = logging.getLogger("uvicorn.error")
@@ -32,25 +32,6 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """
-    FastAPI/Starlette olayi: bir route icinde beklenmeyen (HTTPException
-    OLMAYAN) bir exception patladiginda, bu Starlette'in EN DISTAKI
-    ServerErrorMiddleware'ine kadar cikar - ki o CORSMiddleware'in DISINDA
-    oturuyor. Sonuc: 500 cevap CORS header'lari OLMADAN doner, ve tarayici
-    gercek hatayi (ornegin bir SQL/500 hatasi) hic gostermeden "No
-    'Access-Control-Allow-Origin' header is present" diye CORS hatasi
-    gosterir - halbuki CORS ayari tamamen dogrudur.
-    (Bu proje bunu yasadi: `users` tablosunda `password_hash` kolonu
-    olmayan eski bir `pgdata` volume'u /api/session/start'ta 500'e
-    sebep oluyordu, ama tarayicida "backend unavailable"/CORS hatasi gibi
-    gorunuyordu - bkz. README "Sık karşılaşılan hatalar".)
-
-    Bu handler'i eklemek exception'i FastAPI'nin normal exception-handling
-    katmanina (CORSMiddleware'in ICINDE calisan ExceptionMiddleware) sokuyor,
-    boylece CORS header'lari her zaman eklenir ve tarayici gercek 500'u
-    gorur - "CORS hatasi" gibi gorunen baska bir backend hatasiyla tekrar
-    saatlerce ugrasmayi onluyor.
-    """
 
     logger.exception("Unhandled exception while handling %s", request.url, exc_info=exc)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
@@ -68,8 +49,8 @@ app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"]
 
 @app.on_event("startup")
 def on_startup():
-    # Hackathon asamasinda create_all yeterli. Ticarilesme oncesi Alembic'e gecin
-    # (gercek kullanici verisi varken tablo degisikligi icin migration gerekir).
+
+
     Base.metadata.create_all(bind=engine)
 
 

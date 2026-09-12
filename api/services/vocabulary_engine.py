@@ -10,8 +10,8 @@ class VocabularyEngine:
     def load_vocabulary(location: str) -> Dict[str, Any]:
         file_path = os.path.join(VOCAB_DIR, f"{location}.json")
         if not os.path.exists(file_path):
-            # ScenarioEngine'deki ayni pattern: JSON'u olmayan oda icin
-            # sessizce bos concept listesi don, hata firlatma.
+
+
             return {"location": location, "concepts": []}
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)

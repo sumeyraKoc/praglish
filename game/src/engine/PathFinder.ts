@@ -1,8 +1,3 @@
-/**
- * Grid tabanli A* pathfinding. "Tikladigin yere yuru" mekanigi icin.
- * Koseleri kesmez: capraz hareket icin, capraza bitisik iki duz komsunun da
- * bos olmasi sartini arar (aksi halde karakter duvarin kosesinden gecer gibi gorunur).
- */
 
 export interface GridCell {
   x: number;

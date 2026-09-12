@@ -35,7 +35,6 @@ export interface TtsVoiceProfile {
   style: string;
 }
 
-/** Role-play karakterlerinin Gemini TTS sesleri ve konusma yonlendirmeleri. */
 export const ROLEPLAY_TTS_PROFILES = {
   librarian: {
     voice: "Kore",
@@ -135,7 +134,6 @@ export class PraglishApiClient {
     PraglishApiClient.instances.add(this);
   }
 
-  /** Ana menuye donuldugunde mevcut sayfadaki tum roleplay oturumlarini bitirir. */
   public static resetAllSessions(): void {
     PraglishApiClient.instances.forEach((client) => client.resetSession());
   }
@@ -150,10 +148,6 @@ export class PraglishApiClient {
     return this.sessionPromise;
   }
 
-  /**
-   * Aktif oturum kimligini unutur; kalici kullanici/ilerleme kaydini silmez.
-   * Oda degisimlerinde degil, ana menuye donuldugunde cagirilir.
-   */
   public resetSession(): void {
     this.sessionPromise = null;
   }
@@ -165,12 +159,6 @@ export class PraglishApiClient {
     });
   }
 
-  /**
-   * Bir esyanin yaninda oyuncunun yazdigi/soyledigi kelimeyi backend'e gonderir.
-   * Kelimenin dogru olup olmadigina, daha once kazanilip kazanilmadigina ve odul
-   * miktarina backend (VocabularyEngine) karar verir - burada ikinci bir kelime
-   * listesi tutmuyoruz, cift kaynak olusmasin diye.
-   */
   public async submitVocabulary(concept: string, word: string): Promise<VocabularySubmitResponse> {
     await this.startSession();
     if (this.userId === null) {
@@ -184,11 +172,6 @@ export class PraglishApiClient {
     });
   }
 
-  /**
-   * Bu odada oyuncunun daha once hangi concept/kelimeleri kazandigini getirir.
-   * UI'da "already learned" rozetini gostermek ve gereksiz yeniden deneme
-   * istemi vermemek icin sahne acilisinda bir kere cagrilip cache'lenmeli.
-   */
   public async getVocabularyProgress(): Promise<VocabularyProgressEntry[]> {
     await this.startSession();
     if (this.userId === null) return [];
@@ -201,12 +184,6 @@ export class PraglishApiClient {
     return this.request<DashboardData>("/api/analytics/dashboard", this.getGuestCredentials());
   }
 
-  /**
-   * Oyuncunun mikrofon kaydini (tarayicinin MediaRecorder'i genelde audio/webm
-   * uretir) /api/speech/stt uzerinden yazili metne cevirir. Transkripsiyon
-   * "verbatim" moddadir - dilbilgisi hatalarini DUZELTMEZ, cunku metin bir
-   * sonraki adimda sendTurn() ile ayni dil degerlendirmesinden gecmeli.
-   */
   public async transcribeAudio(audioBlob: Blob): Promise<SpeechToTextResult> {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 30_000);
@@ -238,10 +215,6 @@ export class PraglishApiClient {
     }
   }
 
-  /**
-   * NPC'nin metin cevabini sesli okumasi icin /api/speech/tts'i cagirir ve
-   * calinabilir bir ses Blob'u dondurur (her zaman 24kHz mono audio/wav).
-   */
   public async synthesizeSpeech(text: string, profile?: TtsVoiceProfile): Promise<Blob> {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 30_000);
@@ -293,9 +266,6 @@ export class PraglishApiClient {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 125_000);
     try {
-      // headers/body sadece govdesi olan istekler icin set edilir; RequestInit'e
-      // acikca `undefined` atamiyoruz (tsconfig'deki exactOptionalPropertyTypes
-      // bunu reddeder), bunun yerine key'i hic eklemiyoruz.
       const init: RequestInit = { method: options.method, signal: controller.signal };
       if (options.body !== undefined) {
         init.headers = { "Content-Type": "application/json" };

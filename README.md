@@ -1,5 +1,9 @@
 # PRAGLISH
 
+<p align="center">
+  <img src="game/public/assets/brand/praglish-logo.png" alt="Praglish logo" width="720">
+</p>
+
 > **Unleash your potential with Praglish.**
 
 Praglish is an experience-based English practice game for learners who already

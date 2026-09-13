@@ -135,6 +135,12 @@ device, not in PostgreSQL.
 Rejected sentences and coach corrections are excluded from NPC conversation
 memory. Only accepted player turns and genuine NPC replies become context.
 
+## 🌐 Try Praglish
+
+Experience the game directly in your browser:
+
+**[Play Praglish →](https://praglish.vercel.app/)**
+
 ## Quick start with Docker
 
 Docker Compose is the recommended setup because it starts PostgreSQL, the API,

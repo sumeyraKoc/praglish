@@ -186,9 +186,16 @@ def get_npc_generator() -> TextGenerator:
 
 @lru_cache
 def get_stt_provider() -> SpeechToTextProvider:
-    if _active_ai_provider() == "gemini":
+    # Reuse the existing paid TTS key for STT unless an STT-specific key is
+    # supplied. The shared Gemini key remains the final Gemini fallback.
+    gemini_stt_key = (
+        _env("GEMINI_STT_API_KEY")
+        or _env("GEMINI_TTS_API_KEY")
+        or _env("GEMINI_API_KEY")
+    )
+    if gemini_stt_key:
         return GeminiSpeechToTextProvider(
-            api_key=_env("GEMINI_API_KEY"),
+            api_key=gemini_stt_key,
             model=_env("STT_MODEL", "gemini-3.5-transcribe"),
         )
     return GroqSpeechToTextProvider(

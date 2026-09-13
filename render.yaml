@@ -44,6 +44,8 @@ services:
         value: "10000"
       - key: GEMINI_API_KEY
         sync: false
+      - key: GEMINI_STT_API_KEY
+        sync: false
       - key: GEMINI_TTS_API_KEY
         sync: false
       - key: GEMINI_MODEL

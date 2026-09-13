@@ -185,7 +185,9 @@ GROQ_API_KEY=your-real-groq-key
 Gemini is selected when both keys are present. Restart the AI service after
 changing providers. Replace or clear every placeholder value copied from
 `.env.example`; an unused placeholder is still a non-empty key. In particular,
-leave `GEMINI_TTS_API_KEY` empty unless it contains a real dedicated TTS key.
+leave the dedicated speech keys empty unless they contain real keys. STT uses
+`GEMINI_STT_API_KEY` when supplied, otherwise it reuses `GEMINI_TTS_API_KEY`,
+and finally falls back to `GEMINI_API_KEY`.
 
 For roleplay UI development without real conversation calls:
 
@@ -269,7 +271,8 @@ journal. The final screen can replay the complete scene or restart the exercise.
 | Variable | Default | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | empty | Enables Gemini. Gemini wins if both provider keys are set. |
-| `GEMINI_TTS_API_KEY` | empty | Optional separate Gemini key used only for TTS. |
+| `GEMINI_STT_API_KEY` | empty | Optional separate Gemini key for STT. If empty, STT reuses `GEMINI_TTS_API_KEY`, then `GEMINI_API_KEY`. |
+| `GEMINI_TTS_API_KEY` | empty | Optional paid Gemini speech key for TTS. STT also reuses it when no STT-specific key is supplied. |
 | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Gemini NPC and extraction model. |
 | `GEMINI_EVALUATOR_MODEL` | `GEMINI_MODEL` | Optional evaluator model override. |
 | `CORRECTION_MODEL` | `gemini-3.5-flash-lite` | Gemini correction model. |

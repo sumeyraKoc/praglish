@@ -25,7 +25,8 @@ services:
     environment:
       # Use Gemini when configured; otherwise use Groq when its key is set.
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      # Optional dedicated Gemini key for TTS. Falls back to GEMINI_API_KEY.
+      # Optional paid Gemini speech keys. STT also reuses the TTS key.
+      - GEMINI_STT_API_KEY=${GEMINI_STT_API_KEY:-}
       - GEMINI_TTS_API_KEY=${GEMINI_TTS_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
       # When empty, ai/main.py falls back to GEMINI_MODEL.

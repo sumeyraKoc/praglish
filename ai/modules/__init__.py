@@ -23,6 +23,7 @@ from .speech import (
     GroqSpeechToTextProvider,
     GroqTextToSpeechProvider,
     SpeechAudioResult,
+    SpeechRateLimitError,
     SpeechToTextProvider,
     TextSpeechModule,
     TextToSpeechProvider,
@@ -56,6 +57,7 @@ __all__ = [
     "IncorrectExtractor",
     "NpcModule",
     "SpeechAudioResult",
+    "SpeechRateLimitError",
     "TextSpeechModule",
     "TranscriptionResult",
 ]

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from modules.speech import (
     GeminiSpeechToTextProvider,
     GeminiTextToSpeechProvider,
+    SpeechRateLimitError,
 )
 
 
@@ -21,6 +22,23 @@ class FakeInteractions:
 class FakeClient:
     def __init__(self, response):
         self.interactions = FakeInteractions(response)
+
+
+class RateLimitError(Exception):
+    status_code = 429
+
+
+class SequencedInteractions:
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
 
 class GeminiSpeechToTextProviderTests(unittest.TestCase):
@@ -50,6 +68,44 @@ class GeminiSpeechToTextProviderTests(unittest.TestCase):
         provider = GeminiSpeechToTextProvider("", client=client)
         with self.assertRaises(ValueError):
             provider.transcribe(b"", mime_type="audio/wav")
+
+    def test_retries_once_after_gemini_suggested_rate_limit_delay(self):
+        interactions = SequencedInteractions(
+            [
+                RateLimitError("Please retry in 8.237s."),
+                SimpleNamespace(output_text="hello"),
+            ]
+        )
+        waits = []
+        provider = GeminiSpeechToTextProvider(
+            "",
+            client=SimpleNamespace(interactions=interactions),
+            sleep=waits.append,
+        )
+
+        result = provider.transcribe(b"audio", mime_type="audio/webm")
+
+        self.assertEqual(result.text, "hello")
+        self.assertEqual(len(interactions.calls), 2)
+        self.assertEqual(waits, [9.0])
+
+    def test_surfaces_rate_limit_after_retry_is_exhausted(self):
+        interactions = SequencedInteractions(
+            [
+                RateLimitError("Please retry in 2s."),
+                RateLimitError("Please retry in 7.4s."),
+            ]
+        )
+        provider = GeminiSpeechToTextProvider(
+            "",
+            client=SimpleNamespace(interactions=interactions),
+            sleep=lambda _seconds: None,
+        )
+
+        with self.assertRaises(SpeechRateLimitError) as raised:
+            provider.transcribe(b"audio", mime_type="audio/webm")
+
+        self.assertEqual(raised.exception.retry_after_seconds, 7.4)
 
 
 class GeminiTextToSpeechProviderTests(unittest.TestCase):

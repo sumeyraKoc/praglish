@@ -11,6 +11,7 @@ from fastapi import HTTPException, UploadFile
 AI_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(AI_DIR))
 import main as ai_main  # noqa: E402
+from modules import SpeechRateLimitError  # noqa: E402
 
 
 class FailingSpeechProvider:
@@ -18,6 +19,13 @@ class FailingSpeechProvider:
 
     def transcribe(self, *_args, **_kwargs):
         raise RuntimeError("upstream diagnostic message")
+
+
+class RateLimitedSpeechProvider:
+    _model = "test-transcription-model"
+
+    def transcribe(self, *_args, **_kwargs):
+        raise SpeechRateLimitError(7.2)
 
 
 class STTEndpointLoggingTests(unittest.IsolatedAsyncioTestCase):
@@ -44,6 +52,26 @@ class STTEndpointLoggingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("test-transcription-model", combined_logs)
         self.assertIn("RuntimeError", combined_logs)
         self.assertIn("upstream diagnostic message", combined_logs)
+
+    async def test_returns_429_and_retry_after_for_rate_limit(self):
+        upload = UploadFile(
+            filename="recording.webm",
+            file=io.BytesIO(b"fake-audio"),
+            headers={"content-type": "audio/webm"},
+        )
+
+        with (
+            patch.object(
+                ai_main, "get_stt_provider", return_value=RateLimitedSpeechProvider()
+            ),
+            self.assertLogs("uvicorn.error", level=logging.ERROR),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                await ai_main.speech_to_text(upload, language_code="en-US")
+
+        self.assertEqual(raised.exception.status_code, 429)
+        self.assertEqual(raised.exception.headers["Retry-After"], "8")
+        self.assertIn("retry in 8 seconds", raised.exception.detail)
 
 
 if __name__ == "__main__":

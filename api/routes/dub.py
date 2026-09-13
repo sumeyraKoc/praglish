@@ -749,6 +749,16 @@ async def score_line(
             language_code="en-US",
         )
     except httpx.HTTPStatusError as error:
+        if error.response.status_code == 429:
+            retry_after = error.response.headers.get("retry-after", "10")
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "Speech recognition is temporarily busy. "
+                    f"Please retry in {retry_after} seconds."
+                ),
+                headers={"Retry-After": retry_after},
+            ) from error
         raise HTTPException(
             status_code=502, detail=f"Speech-to-text service error: {error}"
         ) from error

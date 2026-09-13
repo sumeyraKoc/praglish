@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
+import math
+import re
 import time
 import wave
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Callable, Protocol
 
 from .groq_client import (
     DEFAULT_GROQ_STT_MODEL,
@@ -85,6 +88,15 @@ GROQ_TTS_VOICES = {
     "troy",
 }
 _GROQ_DEFAULT_VOICE = "hannah"
+logger = logging.getLogger("uvicorn.error")
+
+
+class SpeechRateLimitError(RuntimeError):
+    """Stable provider-neutral error for a temporary STT quota limit."""
+
+    def __init__(self, retry_after_seconds: float | None = None):
+        super().__init__("Speech transcription rate limit exceeded")
+        self.retry_after_seconds = retry_after_seconds
 
 
 @dataclass(frozen=True)
@@ -136,6 +148,9 @@ class GeminiSpeechToTextProvider:
         model: str = "gemini-3.5-transcribe",
         *,
         client=None,
+        rate_limit_retries: int = 1,
+        max_rate_limit_wait_seconds: float = 12.0,
+        sleep: Callable[[float], None] = time.sleep,
     ):
         if client is None:
             if not api_key:
@@ -151,6 +166,9 @@ class GeminiSpeechToTextProvider:
 
         self._client = client
         self._model = model
+        self._rate_limit_retries = max(0, rate_limit_retries)
+        self._max_rate_limit_wait_seconds = max(0.0, max_rate_limit_wait_seconds)
+        self._sleep = sleep
 
     def transcribe(
         self,
@@ -174,17 +192,48 @@ class GeminiSpeechToTextProvider:
             transcription_config["custom_vocabulary"] = custom_vocabulary[:100]
 
         started = time.perf_counter()
-        interaction = self._client.interactions.create(
-            model=self._model,
-            input=[
+        request = {
+            "model": self._model,
+            "input": [
                 {
                     "type": "audio",
                     "data": base64.b64encode(audio).decode("ascii"),
                     "mime_type": mime_type,
                 }
             ],
-            generation_config={"transcription_config": transcription_config},
-        )
+            "generation_config": {"transcription_config": transcription_config},
+        }
+        retry_count = 0
+        while True:
+            try:
+                interaction = self._client.interactions.create(**request)
+                break
+            except Exception as exc:
+                if not _is_rate_limit_error(exc):
+                    raise
+
+                retry_after = _extract_retry_after_seconds(exc)
+                can_retry = (
+                    retry_count < self._rate_limit_retries
+                    and retry_after is not None
+                    and retry_after <= self._max_rate_limit_wait_seconds
+                )
+                if not can_retry:
+                    raise SpeechRateLimitError(retry_after) from exc
+
+                # Round up so the retry does not arrive just before Gemini's
+                # server-provided quota window has actually elapsed.
+                wait_seconds = max(1.0, float(math.ceil(retry_after)))
+                retry_count += 1
+                logger.warning(
+                    "Gemini STT rate limited; retrying attempt=%d/%d "
+                    "retry_after_seconds=%.1f model=%s",
+                    retry_count,
+                    self._rate_limit_retries,
+                    wait_seconds,
+                    self._model,
+                )
+                self._sleep(wait_seconds)
         latency_ms = round((time.perf_counter() - started) * 1000)
         transcript = (interaction.output_text or "").strip()
         if not transcript:
@@ -405,6 +454,31 @@ class TextSpeechModule:
 def _normalize_mime_type(mime_type: str) -> str:
     clean = mime_type.split(";", maxsplit=1)[0].strip().lower()
     return "audio/wav" if clean in {"audio/x-wav", "audio/wave"} else clean
+
+
+def _is_rate_limit_error(error: Exception) -> bool:
+    return (
+        getattr(error, "status_code", None) == 429
+        or type(error).__name__ == "RateLimitError"
+    )
+
+
+def _extract_retry_after_seconds(error: Exception) -> float | None:
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers:
+        value = headers.get("retry-after") or headers.get("Retry-After")
+        try:
+            return float(value) if value is not None else None
+        except (TypeError, ValueError):
+            pass
+
+    match = re.search(
+        r"(?:please\s+)?retry\s+in\s+([0-9]+(?:\.[0-9]+)?)s",
+        str(error),
+        flags=re.IGNORECASE,
+    )
+    return float(match.group(1)) if match else None
 
 
 def _pcm_to_wav(

@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import time
 import uuid
@@ -33,6 +34,7 @@ from modules import (
     NpcModule,
     PlausibilityEstimator,
     SpeechToTextProvider,
+    SpeechRateLimitError,
     TextGenerator,
     TextToSpeechProvider,
 )
@@ -360,6 +362,31 @@ async def speech_to_text(
             exc,
         )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SpeechRateLimitError as exc:
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        retry_after = max(1, math.ceil(exc.retry_after_seconds or 10))
+        logger.exception(
+            "STT request rate limited request_id=%s provider=%s model=%s "
+            "content_type=%s audio_bytes=%d language_code=%s elapsed_ms=%d "
+            "retry_after_seconds=%d",
+            request_id,
+            locals().get("provider_name", "unavailable"),
+            locals().get("model_name", "unavailable"),
+            content_type,
+            len(audio_bytes),
+            language_code,
+            elapsed_ms,
+            retry_after,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Speech recognition is temporarily busy. "
+                f"Please retry in {retry_after} seconds "
+                f"(reference: {request_id})."
+            ),
+            headers={"Retry-After": str(retry_after)},
+        ) from exc
     except Exception as exc:
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         logger.exception(

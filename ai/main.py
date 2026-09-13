@@ -1,4 +1,7 @@
+import logging
 import os
+import time
+import uuid
 from functools import lru_cache
 
 from fastapi import FastAPI, HTTPException, UploadFile
@@ -52,6 +55,7 @@ from shared.schemas import (
 load_dotenv()
 
 app = FastAPI(title="English World - AI Service")
+logger = logging.getLogger("uvicorn.error")
 
 NPC_PROFILES = {
     ("bakery", "baker"): {
@@ -308,7 +312,10 @@ async def speech_to_text(
     language_code: str | None = "en-US",
     custom_vocabulary: str | None = None,
 ):
+    request_id = uuid.uuid4().hex[:12]
+    started = time.perf_counter()
     audio_bytes = await audio.read()
+    content_type = audio.content_type or "application/octet-stream"
     max_bytes = int(os.getenv("STT_MAX_AUDIO_BYTES", str(10 * 1024 * 1024)))
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="Audio file is empty")
@@ -321,17 +328,67 @@ async def speech_to_text(
         else []
     )
     try:
+        provider = get_stt_provider()
+        provider_name = type(provider).__name__
+        model_name = getattr(provider, "_model", "unknown")
+        logger.info(
+            "STT request started request_id=%s provider=%s model=%s "
+            "content_type=%s audio_bytes=%d language_code=%s",
+            request_id,
+            provider_name,
+            model_name,
+            content_type,
+            len(audio_bytes),
+            language_code,
+        )
         result = await run_in_threadpool(
-            get_stt_provider().transcribe,
+            provider.transcribe,
             audio_bytes,
-            mime_type=audio.content_type or "application/octet-stream",
+            mime_type=content_type,
             language_codes=[language_code] if language_code else [],
             custom_vocabulary=vocabulary,
         )
     except ValueError as exc:
+        logger.warning(
+            "STT request rejected request_id=%s content_type=%s audio_bytes=%d "
+            "language_code=%s error_type=%s error=%s",
+            request_id,
+            content_type,
+            len(audio_bytes),
+            language_code,
+            type(exc).__name__,
+            exc,
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Speech transcription failed") from exc
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        logger.exception(
+            "STT request failed request_id=%s provider=%s model=%s "
+            "content_type=%s audio_bytes=%d language_code=%s elapsed_ms=%d "
+            "error_type=%s",
+            request_id,
+            locals().get("provider_name", "unavailable"),
+            locals().get("model_name", "unavailable"),
+            content_type,
+            len(audio_bytes),
+            language_code,
+            elapsed_ms,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Speech transcription failed (reference: {request_id})",
+        ) from exc
+
+    logger.info(
+        "STT request completed request_id=%s provider=%s model=%s latency_ms=%d "
+        "elapsed_ms=%d",
+        request_id,
+        provider_name,
+        result.model,
+        result.latency_ms,
+        round((time.perf_counter() - started) * 1000),
+    )
 
     return STTResponse(
         text=result.text,
